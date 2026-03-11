@@ -26,11 +26,19 @@ describe("PgCache", () => {
     cache = new PgCache({
       pool,
       cleanupInterval: 0, // Disable auto cleanup for tests
+      autoInit: false,    // Don't auto-init for better control
     });
     await cache.init();
 
     // Clear all data before each test
     await cache.clear();
+  });
+
+  afterEach(async () => {
+    // Close the cache instance after each test
+    if (cache) {
+      await cache.close();
+    }
   });
 
   describe("Configuration", () => {
@@ -54,20 +62,25 @@ describe("PgCache", () => {
     });
 
     it("should use custom table name", async () => {
+      // Use unique table name to avoid conflicts between test runs
+      const tableName = `custom_cache_table_${Date.now()}`;
+
       const customCache = new PgCache({
         pool,
-        table: "custom_cache_table",
+        table: tableName,
+        autoInit: false, // Don't auto-init
       });
       await customCache.init();
 
       // Check if table was created
       const result = await pool.query(
-        "SELECT EXISTS (SELECT FROM pg_tables WHERE tablename = 'custom_cache_table')"
+        `SELECT EXISTS (SELECT FROM pg_tables WHERE tablename = '${tableName}')`
       );
       expect(result.rows[0]?.exists).toBe(true);
 
-      // Cleanup
-      await pool.query("DROP TABLE IF EXISTS custom_cache_table");
+      // Cleanup in proper order
+      await customCache.close(); // Close cache first
+      await pool.query(`DROP TABLE IF EXISTS ${tableName}`); // Then drop table
     });
   });
 
@@ -365,9 +378,11 @@ describe("PgCache", () => {
       const tempCache = new PgCache({
         connectionString: TEST_DATABASE_URL,
         cleanupInterval: 100,
+        autoInit: false, // Don't auto-init
       });
 
-      await tempCache.close();
+      await tempCache.init(); // Explicitly init
+      await tempCache.close(); // Then close
 
       // Should not throw
       expect(true).toBe(true);
