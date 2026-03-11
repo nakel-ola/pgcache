@@ -162,15 +162,20 @@ export class PgCache {
       ? new Date(Date.now() + options.ttl * 1000)
       : null;
 
+    // Handle undefined by wrapping in a container to preserve the distinction from null
+    const wrappedValue = value === undefined
+      ? { __pgcache_undefined: true }
+      : { __pgcache_value: value };
+
     try {
       await this.pool.query(
         `
         INSERT INTO ${this.table} (key, value, expires_at)
-        VALUES ($1, $2, $3)
+        VALUES ($1, $2::jsonb, $3)
         ON CONFLICT (key)
-        DO UPDATE SET value = $2, expires_at = $3, created_at = NOW()
+        DO UPDATE SET value = $2::jsonb, expires_at = $3, created_at = NOW()
       `,
-        [key, JSON.stringify(value), expiresAt]
+        [key, JSON.stringify(wrappedValue), expiresAt]
       );
     } catch (err) {
       throw new PgCacheQueryError("Failed to set cache entry", undefined, err as Error);
@@ -192,7 +197,7 @@ export class PgCache {
     await this.ensureInitialized();
 
     try {
-      const result = await this.pool.query<{ value: string }>(
+      const result = await this.pool.query<{ value: T }>(
         `
         SELECT value FROM ${this.table}
         WHERE key = $1
@@ -205,7 +210,19 @@ export class PgCache {
         return null;
       }
 
-      return JSON.parse(result.rows[0]!.value) as T;
+      const wrapped = result.rows[0]!.value as any;
+
+      // Unwrap the value
+      if (wrapped && typeof wrapped === 'object') {
+        if ('__pgcache_undefined' in wrapped) {
+          return undefined as T;
+        }
+        if ('__pgcache_value' in wrapped) {
+          return wrapped.__pgcache_value as T;
+        }
+      }
+
+      return wrapped as T;
     } catch (err) {
       throw new PgCacheQueryError("Failed to get cache entry", undefined, err as Error);
     }
@@ -385,7 +402,7 @@ export class PgCache {
     }
 
     try {
-      const result = await this.pool.query<{ key: string; value: string }>(
+      const result = await this.pool.query<{ key: string; value: T }>(
         `
         SELECT key, value FROM ${this.table}
         WHERE key = ANY($1)
@@ -396,7 +413,23 @@ export class PgCache {
 
       const map = new Map<string, T>();
       for (const row of result.rows) {
-        map.set(row.key, JSON.parse(row.value) as T);
+        const wrapped = row.value as any;
+
+        // Unwrap the value
+        let unwrapped: T;
+        if (wrapped && typeof wrapped === 'object') {
+          if ('__pgcache_undefined' in wrapped) {
+            unwrapped = undefined as T;
+          } else if ('__pgcache_value' in wrapped) {
+            unwrapped = wrapped.__pgcache_value as T;
+          } else {
+            unwrapped = wrapped as T;
+          }
+        } else {
+          unwrapped = wrapped as T;
+        }
+
+        map.set(row.key, unwrapped);
       }
 
       return map;
@@ -435,14 +468,19 @@ export class PgCache {
           ? new Date(Date.now() + entry.ttl * 1000)
           : null;
 
+        // Handle undefined by wrapping in a container to preserve the distinction from null
+        const wrappedValue = entry.value === undefined
+          ? { __pgcache_undefined: true }
+          : { __pgcache_value: entry.value };
+
         await client.query(
           `
           INSERT INTO ${this.table} (key, value, expires_at)
-          VALUES ($1, $2, $3)
+          VALUES ($1, $2::jsonb, $3)
           ON CONFLICT (key)
-          DO UPDATE SET value = $2, expires_at = $3, created_at = NOW()
+          DO UPDATE SET value = $2::jsonb, expires_at = $3, created_at = NOW()
         `,
-          [entry.key, JSON.stringify(entry.value), expiresAt]
+          [entry.key, JSON.stringify(wrappedValue), expiresAt]
         );
       }
 
