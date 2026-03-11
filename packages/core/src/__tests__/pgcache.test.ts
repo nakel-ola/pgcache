@@ -129,6 +129,118 @@ describe("PgCache", () => {
     });
   });
 
+  describe("setNX()", () => {
+    it("should set key if not exists and return true", async () => {
+      const result = await cache.setNX("new-key", "value");
+      expect(result).toBe(true);
+
+      const value = await cache.get("new-key");
+      expect(value).toBe("value");
+    });
+
+    it("should not overwrite existing key and return false", async () => {
+      await cache.set("existing-key", "original-value");
+      const result = await cache.setNX("existing-key", "new-value");
+      expect(result).toBe(false);
+
+      const value = await cache.get("existing-key");
+      expect(value).toBe("original-value");
+    });
+
+    it("should return false when key already exists", async () => {
+      await cache.set("test-key", "value1");
+      const result1 = await cache.setNX("test-key", "value2");
+      const result2 = await cache.setNX("test-key", "value3");
+
+      expect(result1).toBe(false);
+      expect(result2).toBe(false);
+
+      const value = await cache.get("test-key");
+      expect(value).toBe("value1");
+    });
+
+    it("should set key when expired key exists", async () => {
+      // Set a key with 1 second TTL
+      await cache.set("expired-key", "old-value", { ttl: 1 });
+
+      // Wait for expiration
+      await new Promise((resolve) => setTimeout(resolve, 1100));
+
+      // setNX should succeed because the key is expired
+      const result = await cache.setNX("expired-key", "new-value");
+      expect(result).toBe(true);
+
+      const value = await cache.get("expired-key");
+      expect(value).toBe("new-value");
+    });
+
+    it("should respect TTL option", async () => {
+      const result = await cache.setNX("ttl-key", "value", { ttl: 2 });
+      expect(result).toBe(true);
+
+      // Key should exist initially
+      let value = await cache.get("ttl-key");
+      expect(value).toBe("value");
+
+      // Wait for expiration
+      await new Promise((resolve) => setTimeout(resolve, 2100));
+
+      // Key should be expired
+      value = await cache.get("ttl-key");
+      expect(value).toBeNull();
+    });
+
+    it("should handle objects and arrays", async () => {
+      const obj = { name: "Test", count: 42 };
+      const arr = [1, 2, 3];
+
+      const result1 = await cache.setNX("object-key", obj);
+      const result2 = await cache.setNX("array-key", arr);
+
+      expect(result1).toBe(true);
+      expect(result2).toBe(true);
+
+      const retrievedObj = await cache.get("object-key");
+      const retrievedArr = await cache.get("array-key");
+
+      expect(retrievedObj).toEqual(obj);
+      expect(retrievedArr).toEqual(arr);
+    });
+
+    it("should handle null and undefined values", async () => {
+      const result1 = await cache.setNX("null-nx-key", null);
+      const result2 = await cache.setNX("undefined-nx-key", undefined);
+
+      expect(result1).toBe(true);
+      expect(result2).toBe(true);
+
+      const nullValue = await cache.get("null-nx-key");
+      const undefinedValue = await cache.get("undefined-nx-key");
+
+      expect(nullValue).toBeNull();
+      expect(undefinedValue).toBeUndefined();
+    });
+
+    it("should work as a distributed lock mechanism", async () => {
+      const lockKey = "lock:resource:1";
+
+      // First process acquires lock
+      const acquired1 = await cache.setNX(lockKey, "process-1", { ttl: 5 });
+      expect(acquired1).toBe(true);
+
+      // Second process tries to acquire same lock
+      const acquired2 = await cache.setNX(lockKey, "process-2", { ttl: 5 });
+      expect(acquired2).toBe(false);
+
+      // First process releases lock
+      await cache.del(lockKey);
+
+      // Second process can now acquire lock
+      const acquired3 = await cache.setNX(lockKey, "process-2", { ttl: 5 });
+      expect(acquired3).toBe(true);
+    });
+  });
+
   describe("TTL (Time To Live)", () => {
     it("should set value with TTL", async () => {
       await cache.set("ttl-key", "value", { ttl: 2 });
@@ -166,6 +278,95 @@ describe("PgCache", () => {
     });
   });
 
+  describe("TTL Validation", () => {
+    it("should reject TTL of 0", async () => {
+      await expect(
+        cache.set("key", "value", { ttl: 0 })
+      ).rejects.toThrow("TTL must be a positive finite number");
+    });
+
+    it("should reject negative TTL", async () => {
+      await expect(
+        cache.set("key", "value", { ttl: -5 })
+      ).rejects.toThrow("TTL must be a positive finite number");
+    });
+
+    it("should reject NaN TTL", async () => {
+      await expect(
+        cache.set("key", "value", { ttl: NaN })
+      ).rejects.toThrow("TTL must be a positive finite number");
+    });
+
+    it("should reject Infinity TTL", async () => {
+      await expect(
+        cache.set("key", "value", { ttl: Infinity })
+      ).rejects.toThrow("TTL must be a positive finite number");
+    });
+
+    it("should reject negative Infinity TTL", async () => {
+      await expect(
+        cache.set("key", "value", { ttl: -Infinity })
+      ).rejects.toThrow("TTL must be a positive finite number");
+    });
+
+    it("should accept undefined TTL (no expiry)", async () => {
+      await cache.set("key", "value", { ttl: undefined });
+      const value = await cache.get("key");
+      expect(value).toBe("value");
+
+      const ttl = await cache.ttl("key");
+      expect(ttl).toBe(-1); // -1 means no expiry
+    });
+
+    it("should accept no options (no expiry)", async () => {
+      await cache.set("key", "value");
+      const value = await cache.get("key");
+      expect(value).toBe("value");
+
+      const ttl = await cache.ttl("key");
+      expect(ttl).toBe(-1);
+    });
+
+    it("should reject invalid TTL in setNX", async () => {
+      await expect(
+        cache.setNX("key", "value", { ttl: 0 })
+      ).rejects.toThrow("TTL must be a positive finite number");
+
+      await expect(
+        cache.setNX("key", "value", { ttl: -10 })
+      ).rejects.toThrow("TTL must be a positive finite number");
+    });
+
+    it("should reject invalid TTL in mset", async () => {
+      await expect(
+        cache.mset([
+          { key: "key1", value: "value1", ttl: 60 },
+          { key: "key2", value: "value2", ttl: 0 },
+        ])
+      ).rejects.toThrow("TTL must be a positive finite number");
+
+      await expect(
+        cache.mset([
+          { key: "key1", value: "value1", ttl: -5 },
+        ])
+      ).rejects.toThrow("TTL must be a positive finite number");
+    });
+
+    it("should accept valid positive TTL values", async () => {
+      await cache.set("key1", "value1", { ttl: 1 });
+      await cache.set("key2", "value2", { ttl: 60 });
+      await cache.set("key3", "value3", { ttl: 3600 });
+
+      const value1 = await cache.get("key1");
+      const value2 = await cache.get("key2");
+      const value3 = await cache.get("key3");
+
+      expect(value1).toBe("value1");
+      expect(value2).toBe("value2");
+      expect(value3).toBe("value3");
+    });
+  });
+
   describe("del()", () => {
     it("should delete existing key", async () => {
       await cache.set("delete-me", "value");
@@ -179,6 +380,128 @@ describe("PgCache", () => {
     it("should return false when deleting non-existent key", async () => {
       const deleted = await cache.del("non-existent");
       expect(deleted).toBe(false);
+    });
+  });
+
+  describe("delIfEquals()", () => {
+    it("should delete key when value matches", async () => {
+      await cache.set("key", "expected-value");
+      const deleted = await cache.delIfEquals("key", "expected-value");
+      expect(deleted).toBe(true);
+
+      const value = await cache.get("key");
+      expect(value).toBeNull();
+    });
+
+    it("should not delete when value does not match", async () => {
+      await cache.set("key", "actual-value");
+      const deleted = await cache.delIfEquals("key", "wrong-value");
+      expect(deleted).toBe(false);
+
+      const value = await cache.get("key");
+      expect(value).toBe("actual-value");
+    });
+
+    it("should return false for non-existent key", async () => {
+      const deleted = await cache.delIfEquals("non-existent", "any-value");
+      expect(deleted).toBe(false);
+    });
+
+    it("should work with object values", async () => {
+      const obj = { id: 1, name: "Test" };
+      await cache.set("obj-key", obj);
+
+      // Should not delete with different object
+      const deleted1 = await cache.delIfEquals("obj-key", { id: 2, name: "Test" });
+      expect(deleted1).toBe(false);
+
+      // Should delete with matching object
+      const deleted2 = await cache.delIfEquals("obj-key", obj);
+      expect(deleted2).toBe(true);
+
+      const value = await cache.get("obj-key");
+      expect(value).toBeNull();
+    });
+
+    it("should work with array values", async () => {
+      const arr = [1, 2, 3];
+      await cache.set("arr-key", arr);
+
+      // Should not delete with different array
+      const deleted1 = await cache.delIfEquals("arr-key", [1, 2, 4]);
+      expect(deleted1).toBe(false);
+
+      // Should delete with matching array
+      const deleted2 = await cache.delIfEquals("arr-key", arr);
+      expect(deleted2).toBe(true);
+    });
+
+    it("should handle null and undefined values", async () => {
+      await cache.set("null-key", null);
+      await cache.set("undefined-key", undefined);
+
+      // Should delete with matching null
+      const deleted1 = await cache.delIfEquals("null-key", null);
+      expect(deleted1).toBe(true);
+
+      // Should delete with matching undefined
+      const deleted2 = await cache.delIfEquals("undefined-key", undefined);
+      expect(deleted2).toBe(true);
+
+      // Should not delete null with undefined
+      await cache.set("null-key2", null);
+      const deleted3 = await cache.delIfEquals("null-key2", undefined);
+      expect(deleted3).toBe(false);
+    });
+
+    it("should work as safe distributed lock release", async () => {
+      const lockKey = "lock:resource:1";
+      const token1 = "token-process-1";
+      const token2 = "token-process-2";
+
+      // Process 1 acquires lock
+      const acquired1 = await cache.setNX(lockKey, token1, { ttl: 5 });
+      expect(acquired1).toBe(true);
+
+      // Process 2 tries to release with wrong token (should fail)
+      const released1 = await cache.delIfEquals(lockKey, token2);
+      expect(released1).toBe(false);
+
+      // Lock should still exist with process 1's token
+      const value1 = await cache.get(lockKey);
+      expect(value1).toBe(token1);
+
+      // Process 1 releases with correct token (should succeed)
+      const released2 = await cache.delIfEquals(lockKey, token1);
+      expect(released2).toBe(true);
+
+      // Lock should now be gone
+      const value2 = await cache.get(lockKey);
+      expect(value2).toBeNull();
+    });
+
+    it("should handle lock expiration scenario safely", async () => {
+      const lockKey = "lock:resource:2";
+      const token1 = "token-slow-process";
+      const token2 = "token-fast-process";
+
+      // Process 1 acquires lock with short TTL
+      await cache.setNX(lockKey, token1, { ttl: 1 });
+
+      // Wait for lock to expire
+      await new Promise((resolve) => setTimeout(resolve, 1100));
+
+      // Process 2 acquires the expired lock
+      const acquired2 = await cache.setNX(lockKey, token2, { ttl: 5 });
+      expect(acquired2).toBe(true);
+
+      // Process 1 tries to release (should fail because it no longer owns it)
+      const released1 = await cache.delIfEquals(lockKey, token1);
+      expect(released1).toBe(false);
+
+      // Lock should still exist with process 2's token
+      const value = await cache.get(lockKey);
+      expect(value).toBe(token2);
     });
   });
 

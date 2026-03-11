@@ -64,6 +64,52 @@ export class UserService {
 }
 ```
 
+### Distributed Lock Example
+
+Use `setNX` with `delIfEquals` for safe distributed locks:
+
+```typescript
+import { Injectable } from "@nestjs/common";
+import { randomUUID } from "crypto";
+import { PgCacheService } from "@pgcache/nest";
+
+@Injectable()
+export class TaskService {
+  constructor(private readonly cache: PgCacheService) {}
+
+  async processTask(taskId: string) {
+    const lockKey = `lock:task:${taskId}`;
+    const lockToken = randomUUID(); // Unique token for ownership
+
+    // Try to acquire lock with 30 second TTL
+    const acquired = await this.cache.setNX(
+      lockKey,
+      lockToken,
+      { ttl: 30 }
+    );
+
+    if (!acquired) {
+      console.log("Task already being processed");
+      return;
+    }
+
+    try {
+      // Do work...
+      await this.doWork(taskId);
+    } finally {
+      // Safely release only if we still own the lock
+      await this.cache.delIfEquals(lockKey, lockToken);
+    }
+  }
+
+  private async doWork(taskId: string) {
+    // Your task processing logic
+  }
+}
+```
+
+**Important:** Always use `delIfEquals()` to release locks, not `del()`. Using plain `del()` is unsafe because if your lock expires while processing, another process can acquire it, and your `del()` will delete their lock.
+
 ## Advanced Configuration
 
 ### Async Configuration with ConfigService
@@ -118,8 +164,10 @@ The `PgCacheService` provides the same methods as `PgCache` from `@pgcache/core`
 ### Methods
 
 - `set<T>(key, value, options?)` - Set a value with optional TTL
+- `setNX<T>(key, value, options?)` - Set a value only if key doesn't exist (returns boolean)
 - `get<T>(key)` - Get a value
 - `del(key)` - Delete a key
+- `delIfEquals<T>(key, expectedValue)` - Delete only if value matches (safe lock release)
 - `exists(key)` - Check if key exists
 - `ttl(key)` - Get remaining TTL
 - `clear()` - Clear all entries

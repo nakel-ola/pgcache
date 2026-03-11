@@ -46,6 +46,37 @@ export class PgCacheService implements OnModuleDestroy {
   }
 
   /**
+   * Set a value only if the key does not exist (SET if Not Exists)
+   * Useful for distributed locks and preventing race conditions
+   *
+   * @returns true if the key was set, false if it already exists
+   *
+   * @example Safe distributed lock
+   * ```typescript
+   * import { randomUUID } from "crypto";
+   *
+   * const lockKey = "lock:user:1";
+   * const lockToken = randomUUID();
+   *
+   * const acquired = await this.cache.setNX(lockKey, lockToken, { ttl: 30 });
+   * if (acquired) {
+   *   try {
+   *     // Do work...
+   *   } finally {
+   *     await this.cache.delIfEquals(lockKey, lockToken);
+   *   }
+   * }
+   * ```
+   */
+  async setNX<T = unknown>(
+    key: string,
+    value: T,
+    options?: PgCacheSetOptions
+  ): Promise<boolean> {
+    return this.pgcache.setNX(key, value, options);
+  }
+
+  /**
    * Get a value from the cache
    */
   async get<T = unknown>(key: string): Promise<T | null> {
@@ -57,6 +88,36 @@ export class PgCacheService implements OnModuleDestroy {
    */
   async del(key: string): Promise<boolean> {
     return this.pgcache.del(key);
+  }
+
+  /**
+   * Delete a key only if its value matches the expected value
+   *
+   * Essential for safe distributed lock releases. This prevents
+   * accidentally deleting a lock acquired by another process after
+   * your lock expired.
+   *
+   * @returns true if the key was deleted (value matched), false otherwise
+   *
+   * @example Safe distributed lock release
+   * ```typescript
+   * import { randomUUID } from "crypto";
+   *
+   * const lockKey = "lock:resource:1";
+   * const lockToken = randomUUID();
+   *
+   * const acquired = await this.cache.setNX(lockKey, lockToken, { ttl: 30 });
+   * if (acquired) {
+   *   try {
+   *     // Do work...
+   *   } finally {
+   *     await this.cache.delIfEquals(lockKey, lockToken);
+   *   }
+   * }
+   * ```
+   */
+  async delIfEquals<T = unknown>(key: string, expectedValue: T): Promise<boolean> {
+    return this.pgcache.delIfEquals(key, expectedValue);
   }
 
   /**

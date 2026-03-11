@@ -66,6 +66,7 @@ export class PgCache {
   private pool: Pool;
   private ownPool: boolean;
   private table: string;
+  private quotedTable: string;
   private cleanupInterval?: NodeJS.Timeout;
   private isInitialized = false;
 
@@ -89,7 +90,9 @@ export class PgCache {
       this.ownPool = true;
     }
 
-    this.table = options.table ?? "pgcache";
+    const tableName = options.table ?? "pgcache";
+    this.table = tableName;
+    this.quotedTable = this.validateAndQuoteTableName(tableName);
 
     // Auto-initialize if enabled (default: true)
     const autoInit = options.autoInit ?? true;
@@ -116,7 +119,7 @@ export class PgCache {
 
     try {
       await this.pool.query(`
-        CREATE UNLOGGED TABLE IF NOT EXISTS ${this.table} (
+        CREATE UNLOGGED TABLE IF NOT EXISTS ${this.quotedTable} (
           key TEXT PRIMARY KEY,
           value JSONB NOT NULL,
           expires_at TIMESTAMP NULL,
@@ -125,8 +128,8 @@ export class PgCache {
       `);
 
       await this.pool.query(`
-        CREATE INDEX IF NOT EXISTS ${this.table}_expires_idx
-        ON ${this.table}(expires_at)
+        CREATE INDEX IF NOT EXISTS "${this.table}_expires_idx"
+        ON ${this.quotedTable}(expires_at)
         WHERE expires_at IS NOT NULL
       `);
 
@@ -158,9 +161,7 @@ export class PgCache {
   ): Promise<void> {
     await this.ensureInitialized();
 
-    const expiresAt = options?.ttl
-      ? new Date(Date.now() + options.ttl * 1000)
-      : null;
+    const expiresAt = this.computeExpiresAt(options?.ttl);
 
     // Handle undefined by wrapping in a container to preserve the distinction from null
     const wrappedValue = value === undefined
@@ -170,13 +171,101 @@ export class PgCache {
     try {
       await this.pool.query(
         `
-        INSERT INTO ${this.table} (key, value, expires_at)
+        INSERT INTO ${this.quotedTable} (key, value, expires_at)
         VALUES ($1, $2::jsonb, $3)
         ON CONFLICT (key)
         DO UPDATE SET value = $2::jsonb, expires_at = $3, created_at = NOW()
       `,
         [key, JSON.stringify(wrappedValue), expiresAt]
       );
+    } catch (err) {
+      throw new PgCacheQueryError("Failed to set cache entry", undefined, err as Error);
+    }
+  }
+
+  /**
+   * Set a value only if the key does not exist (SET if Not Exists)
+   *
+   * @param key - The cache key
+   * @param value - The value to cache (will be JSON serialized)
+   * @param options - Options including TTL
+   * @returns True if the key was set, false if it already exists
+   *
+   * @example Safe distributed lock with unique token
+   * ```typescript
+   * import { randomUUID } from "crypto";
+   *
+   * const lockKey = "lock:user:1";
+   * const lockToken = randomUUID();
+   *
+   * const acquired = await cache.setNX(lockKey, lockToken, { ttl: 30 });
+   * if (acquired) {
+   *   try {
+   *     // Lock acquired, do work...
+   *   } finally {
+   *     // Only release if we still own the lock
+   *     await cache.delIfEquals(lockKey, lockToken);
+   *   }
+   * }
+   * ```
+   *
+   * @example Prevent duplicate processing
+   * ```typescript
+   * import { randomUUID } from "crypto";
+   *
+   * const key = `job:${jobId}`;
+   * const token = randomUUID();
+   * const started = await cache.setNX(key, token, { ttl: 300 });
+   * if (!started) {
+   *   console.log("Job already running");
+   *   return;
+   * }
+   * try {
+   *   // Process job...
+   * } finally {
+   *   await cache.delIfEquals(key, token);
+   * }
+   * ```
+   */
+  async setNX<T = unknown>(
+    key: string,
+    value: T,
+    options?: PgCacheSetOptions
+  ): Promise<boolean> {
+    await this.ensureInitialized();
+
+    const expiresAt = this.computeExpiresAt(options?.ttl);
+
+    // Handle undefined by wrapping in a container to preserve the distinction from null
+    const wrappedValue = value === undefined
+      ? { __pgcache_undefined: true }
+      : { __pgcache_value: value };
+
+    try {
+      // First, delete any expired keys with this name
+      // This ensures expired keys don't block setNX
+      await this.pool.query(
+        `
+        DELETE FROM ${this.quotedTable}
+        WHERE key = $1
+        AND expires_at IS NOT NULL
+        AND expires_at <= NOW()
+      `,
+        [key]
+      );
+
+      // Then attempt to insert, but do nothing if key already exists
+      const result = await this.pool.query(
+        `
+        INSERT INTO ${this.quotedTable} (key, value, expires_at)
+        VALUES ($1, $2::jsonb, $3)
+        ON CONFLICT (key) DO NOTHING
+      `,
+        [key, JSON.stringify(wrappedValue), expiresAt]
+      );
+
+      // Return true if a row was inserted, false if key already existed
+      return (result.rowCount ?? 0) > 0;
     } catch (err) {
       throw new PgCacheQueryError("Failed to set cache entry", undefined, err as Error);
     }
@@ -199,7 +288,7 @@ export class PgCache {
     try {
       const result = await this.pool.query<{ value: T }>(
         `
-        SELECT value FROM ${this.table}
+        SELECT value FROM ${this.quotedTable}
         WHERE key = $1
         AND (expires_at IS NULL OR expires_at > NOW())
       `,
@@ -244,13 +333,67 @@ export class PgCache {
 
     try {
       const result = await this.pool.query(
-        `DELETE FROM ${this.table} WHERE key = $1`,
+        `DELETE FROM ${this.quotedTable} WHERE key = $1`,
         [key]
       );
 
       return (result.rowCount ?? 0) > 0;
     } catch (err) {
       throw new PgCacheQueryError("Failed to delete cache entry", undefined, err as Error);
+    }
+  }
+
+  /**
+   * Delete a key only if its value matches the expected value
+   *
+   * This is essential for safe distributed lock releases to prevent
+   * accidentally deleting a lock acquired by another process.
+   *
+   * @param key - The cache key to delete
+   * @param expectedValue - The value that must match for deletion to occur
+   * @returns True if the key was deleted (value matched), false otherwise
+   *
+   * @example Safe distributed lock
+   * ```typescript
+   * import { randomUUID } from "crypto";
+   *
+   * const lockKey = "lock:resource:1";
+   * const lockToken = randomUUID();
+   *
+   * // Acquire lock with unique token
+   * const acquired = await cache.setNX(lockKey, lockToken, { ttl: 30 });
+   *
+   * if (acquired) {
+   *   try {
+   *     // Do work...
+   *   } finally {
+   *     // Only release if we still own the lock
+   *     await cache.delIfEquals(lockKey, lockToken);
+   *   }
+   * }
+   * ```
+   */
+  async delIfEquals<T = unknown>(key: string, expectedValue: T): Promise<boolean> {
+    await this.ensureInitialized();
+
+    // Wrap the expected value the same way we do in set/setNX
+    const wrappedExpectedValue = expectedValue === undefined
+      ? { __pgcache_undefined: true }
+      : { __pgcache_value: expectedValue };
+
+    try {
+      const result = await this.pool.query(
+        `
+        DELETE FROM ${this.quotedTable}
+        WHERE key = $1
+        AND value = $2::jsonb
+      `,
+        [key, JSON.stringify(wrappedExpectedValue)]
+      );
+
+      return (result.rowCount ?? 0) > 0;
+    } catch (err) {
+      throw new PgCacheQueryError("Failed to conditionally delete cache entry", undefined, err as Error);
     }
   }
 
@@ -272,7 +415,7 @@ export class PgCache {
       const result = await this.pool.query<{ exists: boolean }>(
         `
         SELECT EXISTS(
-          SELECT 1 FROM ${this.table}
+          SELECT 1 FROM ${this.quotedTable}
           WHERE key = $1
           AND (expires_at IS NULL OR expires_at > NOW())
         ) as exists
@@ -303,7 +446,7 @@ export class PgCache {
     try {
       const result = await this.pool.query<{ expires_at: Date | null }>(
         `
-        SELECT expires_at FROM ${this.table}
+        SELECT expires_at FROM ${this.quotedTable}
         WHERE key = $1
       `,
         [key]
@@ -344,7 +487,7 @@ export class PgCache {
     await this.ensureInitialized();
 
     try {
-      await this.pool.query(`TRUNCATE TABLE ${this.table}`);
+      await this.pool.query(`TRUNCATE TABLE ${this.quotedTable}`);
     } catch (err) {
       throw new PgCacheQueryError("Failed to clear cache", undefined, err as Error);
     }
@@ -370,7 +513,7 @@ export class PgCache {
     try {
       const result = await this.pool.query<{ key: string }>(
         `
-        SELECT key FROM ${this.table}
+        SELECT key FROM ${this.quotedTable}
         WHERE key ${operator} $1
         AND (expires_at IS NULL OR expires_at > NOW())
       `,
@@ -404,7 +547,7 @@ export class PgCache {
     try {
       const result = await this.pool.query<{ key: string; value: T }>(
         `
-        SELECT key, value FROM ${this.table}
+        SELECT key, value FROM ${this.quotedTable}
         WHERE key = ANY($1)
         AND (expires_at IS NULL OR expires_at > NOW())
       `,
@@ -464,9 +607,7 @@ export class PgCache {
       await client.query("BEGIN");
 
       for (const entry of entries) {
-        const expiresAt = entry.ttl
-          ? new Date(Date.now() + entry.ttl * 1000)
-          : null;
+        const expiresAt = this.computeExpiresAt(entry.ttl);
 
         // Handle undefined by wrapping in a container to preserve the distinction from null
         const wrappedValue = entry.value === undefined
@@ -475,7 +616,7 @@ export class PgCache {
 
         await client.query(
           `
-          INSERT INTO ${this.table} (key, value, expires_at)
+          INSERT INTO ${this.quotedTable} (key, value, expires_at)
           VALUES ($1, $2::jsonb, $3)
           ON CONFLICT (key)
           DO UPDATE SET value = $2::jsonb, expires_at = $3, created_at = NOW()
@@ -487,6 +628,10 @@ export class PgCache {
       await client.query("COMMIT");
     } catch (err) {
       await client.query("ROLLBACK");
+      // Re-throw config errors directly (e.g., invalid TTL)
+      if (err instanceof PgCacheConfigError) {
+        throw err;
+      }
       throw new PgCacheQueryError("Failed to set multiple entries", undefined, err as Error);
     } finally {
       client.release();
@@ -510,7 +655,7 @@ export class PgCache {
     try {
       const result = await this.pool.query(
         `
-        DELETE FROM ${this.table}
+        DELETE FROM ${this.quotedTable}
         WHERE expires_at IS NOT NULL
         AND expires_at <= NOW()
       `
@@ -548,7 +693,7 @@ export class PgCache {
           COUNT(*) FILTER (WHERE expires_at IS NOT NULL AND expires_at <= NOW()) as expired,
           COUNT(*) FILTER (WHERE expires_at IS NULL OR expires_at > NOW()) as active,
           pg_total_relation_size('${this.table}') as size
-        FROM ${this.table}
+        FROM ${this.quotedTable}
       `);
 
       const row = result.rows[0]!;
@@ -597,6 +742,24 @@ export class PgCache {
   }
 
   /**
+   * Validate and compute expiration date from TTL
+   * @private
+   */
+  private computeExpiresAt(ttl: number | undefined): Date | null {
+    if (ttl === undefined || ttl === null) {
+      return null;
+    }
+
+    if (!Number.isFinite(ttl) || ttl <= 0) {
+      throw new PgCacheConfigError(
+        `TTL must be a positive finite number, got: ${ttl}`
+      );
+    }
+
+    return new Date(Date.now() + ttl * 1000);
+  }
+
+  /**
    * Ensure the cache is initialized before running queries
    * @private
    */
@@ -604,5 +767,23 @@ export class PgCache {
     if (!this.isInitialized) {
       await this.init();
     }
+  }
+
+  /**
+   * Validate and quote table name to prevent SQL injection
+   * @private
+   */
+  private validateAndQuoteTableName(tableName: string): string {
+    // Validate: only alphanumeric and underscores, must start with letter or underscore
+    const validIdentifierPattern = /^[a-zA-Z_][a-zA-Z0-9_]*$/;
+
+    if (!validIdentifierPattern.test(tableName)) {
+      throw new PgCacheConfigError(
+        `Invalid table name: "${tableName}". Table names must start with a letter or underscore and contain only letters, numbers, and underscores.`
+      );
+    }
+
+    // Quote the identifier for safe use in SQL (escape any double quotes by doubling them)
+    return `"${tableName.replace(/"/g, '""')}"`;
   }
 }
