@@ -1,294 +1,295 @@
-# NestJS Example - PgCache
+# PgCache NestJS Example
 
-A complete NestJS application demonstrating how to use `@pgcache/nest` for caching in a production-ready way.
+A complete REST API example demonstrating how to use `@pgcache/nest` in a NestJS application.
 
-## Examples Included
+## Features
 
-### 1. Main Application (`src/`)
+- 🚀 Full CRUD API for user management
+- 💾 Caching with automatic invalidation
+- 📊 Cache statistics endpoint
+- 🏥 Health check with cache metrics
+- ⚡ Demonstrates cache hits/misses in console
 
-A working NestJS application with caching integration.
+## Prerequisites
 
-Features:
-- NestJS module integration with `PgCacheModule`
-- Dependency injection with `PgCacheService`
-- Real-world caching patterns
-- Cache invalidation strategies
-- REST API with cached endpoints
-- Cache hit/miss logging
-- Health checks with cache statistics
-
-### 2. Custom Pool Example (`src/custom-pool.example.ts`)
-
-Comprehensive examples showing how to use a custom PostgreSQL connection pool with PgCacheModule.
-
-Demonstrates:
-- **Basic custom pool provider** - Creating and configuring a custom pool
-- **Multiple cache instances** - Sharing a pool across multiple cache tables
-- **Pool monitoring service** - Health monitoring and statistics
-- **ConfigService integration** - Dynamic pool configuration based on environment
-- **Dependency injection** - Injecting the pool for direct access
-- **Lifecycle management** - Proper pool cleanup on app shutdown
-
-**Note**: This is a reference file with multiple examples. See the code comments for detailed usage instructions.
-
-## Architecture
-
-```
-src/
-├── main.ts                    # Application entry point
-├── app.module.ts              # Root module with PgCacheModule
-├── app.controller.ts          # Health and utility endpoints
-├── custom-pool.example.ts     # Custom pool examples (reference)
-└── users/                     # Example feature module
-    ├── users.module.ts        # Users module
-    ├── users.controller.ts    # Users REST endpoints
-    └── users.service.ts       # Business logic with caching
-```
+- Node.js 20+
+- PostgreSQL 12+
+- pnpm (or npm/yarn)
 
 ## Setup
 
-1. Install dependencies:
+### 1. Install Dependencies
+
+From the root of the monorepo:
 
 ```bash
 pnpm install
-```
-
-2. Configure PostgreSQL connection:
-
-```bash
-export DATABASE_URL="postgresql://localhost:5432/pgcache_dev"
-```
-
-Or create a `.env` file:
-
-```env
-DATABASE_URL=postgresql://localhost:5432/pgcache_dev
-PORT=3001
-```
-
-3. Run the application:
-
-```bash
-# Development mode with auto-reload
-pnpm dev
-
-# Production mode
 pnpm build
-pnpm start:prod
 ```
+
+### 2. Create PostgreSQL Database
+
+Create the development database:
+
+```bash
+# Using psql
+psql -d template1 -c "CREATE DATABASE pgcache_dev;"
+
+# Or using createdb
+createdb pgcache_dev
+```
+
+### 3. Configure Database Connection (Optional)
+
+By default, the app connects to `postgresql://localhost:5432/pgcache_dev`.
+
+To use a different connection string, set the `DATABASE_URL` environment variable:
+
+```bash
+export DATABASE_URL="postgresql://username:password@localhost:5432/your_database"
+```
+
+### 4. Start the Application
+
+```bash
+# From the monorepo root
+pnpm --filter @pgcache-examples/nest start
+
+# Or from this directory
+cd examples/nest
+pnpm start
+
+# Development mode with watch
+pnpm dev
+```
+
+The server will start at `http://localhost:3001`
 
 ## API Endpoints
 
-### Root Endpoints
+### General
 
-#### Welcome Message
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/` | Welcome message |
+| GET | `/health` | Health check with cache stats |
+| POST | `/cache/clear` | Clear all cache entries |
 
-```bash
-curl http://localhost:3001/
-```
+### Users
 
-#### Health Check
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/users` | Get all users (cached for 60s) |
+| GET | `/users/:id` | Get user by ID (cached for 5min) |
+| POST | `/users` | Create new user |
+| PUT | `/users/:id` | Update user (invalidates cache) |
+| DELETE | `/users/:id` | Delete user (invalidates cache) |
+| GET | `/users/cache/stats` | Get cache statistics |
 
-```bash
-curl http://localhost:3001/health
-```
+## Usage Examples
 
-#### Clear All Cache
+### Get All Users
 
-```bash
-curl -X POST http://localhost:3001/cache/clear
-```
-
-### User Endpoints
-
-#### Get All Users (Cached)
-
-```bash
+\`\`\`bash
 curl http://localhost:3001/users
-```
+\`\`\`
 
-The first request will fetch from "database" (simulated delay). Subsequent requests within 60 seconds will be served from cache.
+**First request** (cache MISS):
+\`\`\`
+❌ Cache MISS: users:all
+\`\`\`
 
-#### Get User by ID (Cached)
+**Second request** (cache HIT):
+\`\`\`
+✅ Cache HIT: users:all
+\`\`\`
 
-```bash
+### Get User by ID
+
+\`\`\`bash
 curl http://localhost:3001/users/1
-```
+\`\`\`
 
-Individual user data is cached for 5 minutes.
+### Create User
 
-#### Create User
+\`\`\`bash
+curl -X POST http://localhost:3001/users \\
+  -H "Content-Type: application/json" \\
+  -d '{"name": "Alice Smith", "email": "alice@example.com"}'
+\`\`\`
 
-```bash
-curl -X POST http://localhost:3001/users \
-  -H "Content-Type: application/json" \
-  -d '{"name": "Alice Johnson", "email": "alice@example.com"}'
-```
+This automatically invalidates the \`users:all\` cache.
 
-Creating a user invalidates the "all users" cache.
+### Update User
 
-#### Update User
-
-```bash
-curl -X PUT http://localhost:3001/users/1 \
-  -H "Content-Type: application/json" \
+\`\`\`bash
+curl -X PUT http://localhost:3001/users/1 \\
+  -H "Content-Type: application/json" \\
   -d '{"name": "Updated Name"}'
-```
+\`\`\`
 
-Updating a user invalidates both the specific user cache and the "all users" cache.
+This invalidates both \`user:1\` and \`users:all\` caches.
 
-#### Delete User
+### Delete User
 
-```bash
+\`\`\`bash
 curl -X DELETE http://localhost:3001/users/1
-```
+\`\`\`
 
-Deleting a user invalidates both the specific user cache and the "all users" cache.
+### Cache Statistics
 
-#### Get User Cache Statistics
-
-```bash
+\`\`\`bash
 curl http://localhost:3001/users/cache/stats
-```
+\`\`\`
+
+Response:
+\`\`\`json
+{
+  "userCacheKeys": ["user:1", "user:2", "users:all"],
+  "cacheStats": {
+    "totalEntries": 3,
+    "expiredEntries": 0,
+    "activeEntries": 3,
+    "approximateSize": 8192
+  }
+}
+\`\`\`
+
+### Health Check
+
+\`\`\`bash
+curl http://localhost:3001/health
+\`\`\`
+
+Response:
+\`\`\`json
+{
+  "status": "ok",
+  "timestamp": "2026-03-11T15:30:00.000Z",
+  "uptime": 42.5,
+  "database": "connected",
+  "cache": {
+    "totalEntries": 3,
+    "activeEntries": 3,
+    "expiredEntries": 0
+  }
+}
+\`\`\`
+
+## Code Structure
+
+\`\`\`
+src/
+├── main.ts                  # Application entry point
+├── app.module.ts            # Root module with PgCache configuration
+├── app.controller.ts        # Health and cache management endpoints
+└── users/
+    ├── users.module.ts      # Users feature module
+    ├── users.controller.ts  # Users REST endpoints
+    └── users.service.ts     # Business logic with caching
+\`\`\`
 
 ## Caching Strategy
 
 ### Cache Keys
 
-- `users:all` - All users list (TTL: 60 seconds)
-- `user:{id}` - Individual user (TTL: 300 seconds)
+- \`users:all\` - List of all users (TTL: 60 seconds)
+- \`user:{id}\` - Individual user data (TTL: 5 minutes)
 
 ### Cache Invalidation
 
-1. **Create User**: Invalidates `users:all`
-2. **Update User**: Invalidates `user:{id}` and `users:all`
-3. **Delete User**: Invalidates `user:{id}` and `users:all`
+- **Create User**: Invalidates \`users:all\`
+- **Update User**: Invalidates \`user:{id}\` and \`users:all\`
+- **Delete User**: Invalidates \`user:{id}\` and \`users:all\`
 
-### Cache Hit/Miss Logging
+### Why This Works
 
-Watch the console to see cache hits and misses:
+The cache is automatically invalidated when data changes, ensuring users always see fresh data while maximizing cache hits for read operations.
 
-```
-✅ Cache HIT: users:all
-❌ Cache MISS: user:123
-```
+## Configuration
 
-## Testing the Cache
+The PgCache module is configured in \`app.module.ts\`:
 
-### Test Cache Hit
-
-```bash
-# First request (cache miss)
-time curl http://localhost:3001/users/1
-
-# Second request (cache hit - much faster)
-time curl http://localhost:3001/users/1
-```
-
-### Test Cache Invalidation
-
-```bash
-# Get user (cache miss)
-curl http://localhost:3001/users/1
-
-# Get user again (cache hit)
-curl http://localhost:3001/users/1
-
-# Update user (invalidates cache)
-curl -X PUT http://localhost:3001/users/1 \
-  -H "Content-Type: application/json" \
-  -d '{"name": "New Name"}'
-
-# Get user again (cache miss because it was invalidated)
-curl http://localhost:3001/users/1
-```
-
-## Code Highlights
-
-### Module Configuration
-
-```typescript
-// app.module.ts
-@Module({
-  imports: [
-    PgCacheModule.forRoot({
-      connectionString: process.env.DATABASE_URL,
-      cleanupInterval: 60000,
-      table: 'app_cache',
-    }),
-  ],
+\`\`\`typescript
+PgCacheModule.forRoot({
+  connectionString: process.env.DATABASE_URL ||
+    "postgresql://localhost:5432/pgcache_dev",
+  cleanupInterval: 60000,  // Cleanup every minute
+  table: "app_cache",      // Custom table name
 })
-export class AppModule {}
-```
+\`\`\`
 
-### Service with Caching
+### Configuration Options
 
-```typescript
-// users.service.ts
-@Injectable()
-export class UsersService {
-  constructor(private readonly cache: PgCacheService) {}
+| Option | Description | Default |
+|--------|-------------|---------|
+| \`connectionString\` | PostgreSQL connection URL | Required |
+| \`cleanupInterval\` | Automatic cleanup interval (ms) | \`60000\` |
+| \`table\` | Cache table name | \`"pgcache"\` |
+| \`autoInit\` | Auto-create table | \`true\` |
 
-  async findOne(id: string): Promise<User> {
-    const cacheKey = `user:${id}`;
+## Troubleshooting
 
-    // Try cache first
-    const cached = await this.cache.get<User>(cacheKey);
-    if (cached) return cached;
+### Database Connection Error
 
-    // Fetch from database
-    const user = await this.fetchFromDatabase(id);
+**Error**: \`database "pgcache_dev" does not exist\`
 
-    // Store in cache
-    await this.cache.set(cacheKey, user, { ttl: 300 });
+**Solution**: Create the database:
+\`\`\`bash
+createdb pgcache_dev
+# or
+psql -d template1 -c "CREATE DATABASE pgcache_dev;"
+\`\`\`
 
-    return user;
-  }
-}
-```
+### Port Already in Use
 
-## Performance Comparison
+**Error**: \`EADDRINUSE: address already in use :::3001\`
 
-Without cache:
-```
-First request:  ~100ms (database query)
-Second request: ~100ms (database query)
-```
+**Solution**: Kill the existing process or change the port in \`src/main.ts\`:
+\`\`\`bash
+# Kill process on port 3001
+lsof -ti:3001 | xargs kill -9
+\`\`\`
 
-With cache:
-```
-First request:  ~100ms (cache miss + database query)
-Second request: ~5ms   (cache hit)
-```
+### PostgreSQL Not Running
 
-## Advanced Patterns
+**Error**: \`connection refused\`
 
-### Custom Caching Decorator
+**Solution**: Start PostgreSQL:
+\`\`\`bash
+# macOS (Homebrew)
+brew services start postgresql@16
 
-You can create a custom decorator for automatic caching:
+# Linux (systemd)
+sudo systemctl start postgresql
 
-```typescript
-export function Cacheable(ttl: number) {
-  return function (
-    target: any,
-    propertyKey: string,
-    descriptor: PropertyDescriptor
-  ) {
-    // Decorator implementation
-  };
-}
+# Check status
+psql -d template1 -c "SELECT version();"
+\`\`\`
 
-@Cacheable(300)
-async getUser(id: string) {
-  // This method's results will be automatically cached
-}
-```
+### Cache Not Working
 
-See the full implementation in the [NestJS package README](../../packages/nest/README.md#example-caching-decorator).
+1. **Check database connection**: Visit \`/health\` endpoint
+2. **Check cache table**: \`psql pgcache_dev -c "SELECT * FROM app_cache;"\`
+3. **Check logs**: Look for cache HIT/MISS messages in console
+4. **Clear cache**: \`curl -X POST http://localhost:3001/cache/clear\`
+
+## Performance
+
+Expected response times:
+
+- **Cache HIT**: ~1-5ms
+- **Cache MISS**: ~100ms (simulated DB delay)
+- **Cache invalidation**: ~1-2ms
+
+The example includes artificial delays to demonstrate cache benefits clearly.
 
 ## Learn More
 
-- [@pgcache/nest Documentation](../../packages/nest/README.md)
-- [@pgcache/core Documentation](../../packages/core/README.md)
-- [Main README](../../README.md)
-- [NestJS Documentation](https://docs.nestjs.com)
+- [@pgcache/nest documentation](../../packages/nest/README.md)
+- [@pgcache/core documentation](../../packages/core/README.md)
+- [NestJS documentation](https://docs.nestjs.com)
+
+## License
+
+MIT

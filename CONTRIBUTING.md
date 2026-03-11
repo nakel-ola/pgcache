@@ -378,6 +378,55 @@ Releases are automated using Changesets and GitHub Actions:
 
 Maintainers handle the release process.
 
+### Release Setup for Maintainers
+
+Before the automated release workflow can publish packages to npm, maintainers need to configure npm authentication:
+
+#### 1. Create an npm Access Token
+
+1. Log in to [npmjs.com](https://www.npmjs.com)
+2. Go to your account settings: **Avatar → Access Tokens**
+3. Click **Generate New Token → Granular Access Token**
+4. Configure the token:
+   - **Name**: `pgcache-github-actions` (or similar descriptive name)
+   - **Expiration**: Choose based on your security policy (90 days recommended)
+   - **Packages and scopes**:
+     - Select "Read and write" permission
+     - Limit to packages: `@pgcache/core`, `@pgcache/nest`, `@pgcache/types`
+   - **Organizations**: Select if applicable
+5. Click **Generate Token**
+6. **IMPORTANT**: Copy the token immediately - you won't be able to see it again!
+
+#### 2. Add Token to GitHub Repository
+
+1. Go to the pgcache repository on GitHub
+2. Navigate to **Settings → Secrets and variables → Actions**
+3. Click **New repository secret**
+4. Add the secret:
+   - **Name**: `NPM_TOKEN` (must be exactly this name)
+   - **Value**: Paste the npm token you copied
+5. Click **Add secret**
+
+#### 3. Verify Setup
+
+Once configured, the release workflow will:
+- Automatically publish packages when the "Version Packages" PR is merged
+- Use the NPM_TOKEN for authentication
+- Publish to npm with public access (configured in package.json)
+
+#### Troubleshooting
+
+**Issue**: Release fails with `ENEEDAUTH` error
+- **Solution**: Verify NPM_TOKEN is correctly set in GitHub secrets and hasn't expired
+
+**Issue**: Release fails with `E403` (forbidden)
+- **Solution**: Ensure the npm token has write permissions for all `@pgcache/*` packages
+
+**Issue**: Package not found on npm
+- **Solution**: First publish may need to be done manually if package name is new
+
+For more detailed information, see [RELEASING.md](./RELEASING.md).
+
 ## Getting Help
 
 - **Questions**: Open a GitHub Discussion

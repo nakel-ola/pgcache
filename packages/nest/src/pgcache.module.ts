@@ -79,7 +79,7 @@ export class PgCacheModule {
       module: PgCacheModule,
       providers,
       exports: [PgCacheService, PGCACHE_INSTANCE],
-      global: false,
+      global: true,
     };
   }
 
@@ -108,7 +108,7 @@ export class PgCacheModule {
       imports: options.imports || [],
       providers,
       exports: [PgCacheService, PGCACHE_INSTANCE],
-      global: false,
+      global: true,
     };
   }
 }

@@ -335,6 +335,14 @@ We welcome contributions! Please see [CONTRIBUTING.md](./CONTRIBUTING.md) for gu
 5. Run `pnpm changeset` to document changes
 6. Submit a pull request
 
+### For Maintainers
+
+If you're a maintainer looking to publish releases, see [RELEASING.md](./RELEASING.md) for detailed instructions on:
+- Setting up npm authentication
+- Configuring GitHub secrets
+- Manual publishing procedures
+- Troubleshooting release issues
+
 ## Versioning
 
 This project uses [Changesets](https://github.com/changesets/changesets) for version management and changelog generation.
