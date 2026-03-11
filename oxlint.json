@@ -1,0 +1,15 @@
+{
+  "rules": {
+    "typescript": "warn",
+    "correctness": "error",
+    "suspicious": "warn",
+    "perf": "warn"
+  },
+  "ignorePatterns": [
+    "node_modules",
+    "dist",
+    "build",
+    "coverage",
+    "**/*.d.ts"
+  ]
+}
