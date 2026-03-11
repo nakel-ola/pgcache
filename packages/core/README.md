@@ -77,36 +77,50 @@ Returns `true` if the key was set, `false` if it already exists.
 
 This is useful for distributed locks and preventing race conditions.
 
-**Example - Distributed Lock:**
+**Example - Safe Distributed Lock:**
 
 ```typescript
-const acquired = await cache.setNX(
-  "lock:user:1",
-  "processing",
-  { ttl: 30 }
-);
+import { randomUUID } from "crypto";
+
+const lockKey = "lock:user:1";
+const lockToken = randomUUID(); // Unique token for this lock
+
+const acquired = await cache.setNX(lockKey, lockToken, { ttl: 30 });
 
 if (acquired) {
-  console.log("Lock acquired!");
-  // Do work...
-  await cache.del("lock:user:1");
+  try {
+    console.log("Lock acquired!");
+    // Do work...
+  } finally {
+    // Only release if we still own the lock
+    await cache.delIfEquals(lockKey, lockToken);
+  }
 } else {
   console.log("Lock already held");
 }
 ```
 
+**Warning:** Using plain `cache.del()` to release locks is **unsafe**. If the lock expires while processing, another process can acquire it, and your `del()` will delete their lock. Always use `cache.delIfEquals()` with a unique token for safe lock releases.
+
 **Example - Prevent Duplicate Processing:**
 
 ```typescript
+import { randomUUID } from "crypto";
+
 const key = `job:${jobId}`;
-const started = await cache.setNX(key, "running", { ttl: 300 });
+const token = randomUUID();
+const started = await cache.setNX(key, token, { ttl: 300 });
 
 if (!started) {
   console.log("Job already running");
   return;
 }
 
-// Process job...
+try {
+  // Process job...
+} finally {
+  await cache.delIfEquals(key, token);
+}
 ```
 
 **Return Value:**
@@ -130,6 +144,38 @@ Delete a key from the cache.
 ```typescript
 const deleted = await cache.del("user:1");
 ```
+
+#### `delIfEquals(key, expectedValue)`
+
+Delete a key only if its value matches the expected value.
+
+This is essential for safe distributed lock releases. It prevents accidentally deleting a lock that was acquired by another process after your lock expired.
+
+```typescript
+import { randomUUID } from "crypto";
+
+const lockKey = "lock:resource:1";
+const lockToken = randomUUID();
+
+// Acquire lock
+const acquired = await cache.setNX(lockKey, lockToken, { ttl: 30 });
+
+if (acquired) {
+  try {
+    // Do work...
+  } finally {
+    // Safely release only if we still own the lock
+    const released = await cache.delIfEquals(lockKey, lockToken);
+    if (!released) {
+      console.warn("Lock was already released or taken by another process");
+    }
+  }
+}
+```
+
+**Return Value:**
+- `true` - Key was deleted (value matched)
+- `false` - Key was not deleted (value didn't match or key doesn't exist)
 
 #### `exists(key)`
 

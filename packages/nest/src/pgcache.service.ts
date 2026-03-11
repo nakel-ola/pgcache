@@ -83,6 +83,36 @@ export class PgCacheService implements OnModuleDestroy {
   }
 
   /**
+   * Delete a key only if its value matches the expected value
+   *
+   * Essential for safe distributed lock releases. This prevents
+   * accidentally deleting a lock acquired by another process after
+   * your lock expired.
+   *
+   * @returns true if the key was deleted (value matched), false otherwise
+   *
+   * @example Safe distributed lock release
+   * ```typescript
+   * import { randomUUID } from "crypto";
+   *
+   * const lockKey = "lock:resource:1";
+   * const lockToken = randomUUID();
+   *
+   * const acquired = await this.cache.setNX(lockKey, lockToken, { ttl: 30 });
+   * if (acquired) {
+   *   try {
+   *     // Do work...
+   *   } finally {
+   *     await this.cache.delIfEquals(lockKey, lockToken);
+   *   }
+   * }
+   * ```
+   */
+  async delIfEquals<T = unknown>(key: string, expectedValue: T): Promise<boolean> {
+    return this.pgcache.delIfEquals(key, expectedValue);
+  }
+
+  /**
    * Check if a key exists
    */
   async exists(key: string): Promise<boolean> {

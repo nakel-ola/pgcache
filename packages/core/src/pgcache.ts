@@ -158,9 +158,7 @@ export class PgCache {
   ): Promise<void> {
     await this.ensureInitialized();
 
-    const expiresAt = options?.ttl
-      ? new Date(Date.now() + options.ttl * 1000)
-      : null;
+    const expiresAt = this.computeExpiresAt(options?.ttl);
 
     // Handle undefined by wrapping in a container to preserve the distinction from null
     const wrappedValue = value === undefined
@@ -190,24 +188,40 @@ export class PgCache {
    * @param options - Options including TTL
    * @returns True if the key was set, false if it already exists
    *
-   * @example Distributed lock
+   * @example Safe distributed lock with unique token
    * ```typescript
-   * const acquired = await cache.setNX("lock:user:1", "processing", { ttl: 30 });
+   * import { randomUUID } from "crypto";
+   *
+   * const lockKey = "lock:user:1";
+   * const lockToken = randomUUID();
+   *
+   * const acquired = await cache.setNX(lockKey, lockToken, { ttl: 30 });
    * if (acquired) {
-   *   // Lock acquired, do work...
-   *   await cache.del("lock:user:1");
+   *   try {
+   *     // Lock acquired, do work...
+   *   } finally {
+   *     // Only release if we still own the lock
+   *     await cache.delIfEquals(lockKey, lockToken);
+   *   }
    * }
    * ```
    *
    * @example Prevent duplicate processing
    * ```typescript
+   * import { randomUUID } from "crypto";
+   *
    * const key = `job:${jobId}`;
-   * const started = await cache.setNX(key, "running", { ttl: 300 });
+   * const token = randomUUID();
+   * const started = await cache.setNX(key, token, { ttl: 300 });
    * if (!started) {
    *   console.log("Job already running");
    *   return;
    * }
-   * // Process job...
+   * try {
+   *   // Process job...
+   * } finally {
+   *   await cache.delIfEquals(key, token);
+   * }
    * ```
    */
   async setNX<T = unknown>(
@@ -217,9 +231,7 @@ export class PgCache {
   ): Promise<boolean> {
     await this.ensureInitialized();
 
-    const expiresAt = options?.ttl
-      ? new Date(Date.now() + options.ttl * 1000)
-      : null;
+    const expiresAt = this.computeExpiresAt(options?.ttl);
 
     // Handle undefined by wrapping in a container to preserve the distinction from null
     const wrappedValue = value === undefined
@@ -325,6 +337,60 @@ export class PgCache {
       return (result.rowCount ?? 0) > 0;
     } catch (err) {
       throw new PgCacheQueryError("Failed to delete cache entry", undefined, err as Error);
+    }
+  }
+
+  /**
+   * Delete a key only if its value matches the expected value
+   *
+   * This is essential for safe distributed lock releases to prevent
+   * accidentally deleting a lock acquired by another process.
+   *
+   * @param key - The cache key to delete
+   * @param expectedValue - The value that must match for deletion to occur
+   * @returns True if the key was deleted (value matched), false otherwise
+   *
+   * @example Safe distributed lock
+   * ```typescript
+   * import { randomUUID } from "crypto";
+   *
+   * const lockKey = "lock:resource:1";
+   * const lockToken = randomUUID();
+   *
+   * // Acquire lock with unique token
+   * const acquired = await cache.setNX(lockKey, lockToken, { ttl: 30 });
+   *
+   * if (acquired) {
+   *   try {
+   *     // Do work...
+   *   } finally {
+   *     // Only release if we still own the lock
+   *     await cache.delIfEquals(lockKey, lockToken);
+   *   }
+   * }
+   * ```
+   */
+  async delIfEquals<T = unknown>(key: string, expectedValue: T): Promise<boolean> {
+    await this.ensureInitialized();
+
+    // Wrap the expected value the same way we do in set/setNX
+    const wrappedExpectedValue = expectedValue === undefined
+      ? { __pgcache_undefined: true }
+      : { __pgcache_value: expectedValue };
+
+    try {
+      const result = await this.pool.query(
+        `
+        DELETE FROM ${this.table}
+        WHERE key = $1
+        AND value = $2::jsonb
+      `,
+        [key, JSON.stringify(wrappedExpectedValue)]
+      );
+
+      return (result.rowCount ?? 0) > 0;
+    } catch (err) {
+      throw new PgCacheQueryError("Failed to conditionally delete cache entry", undefined, err as Error);
     }
   }
 
@@ -538,9 +604,7 @@ export class PgCache {
       await client.query("BEGIN");
 
       for (const entry of entries) {
-        const expiresAt = entry.ttl
-          ? new Date(Date.now() + entry.ttl * 1000)
-          : null;
+        const expiresAt = this.computeExpiresAt(entry.ttl);
 
         // Handle undefined by wrapping in a container to preserve the distinction from null
         const wrappedValue = entry.value === undefined
@@ -561,6 +625,10 @@ export class PgCache {
       await client.query("COMMIT");
     } catch (err) {
       await client.query("ROLLBACK");
+      // Re-throw config errors directly (e.g., invalid TTL)
+      if (err instanceof PgCacheConfigError) {
+        throw err;
+      }
       throw new PgCacheQueryError("Failed to set multiple entries", undefined, err as Error);
     } finally {
       client.release();
@@ -668,6 +736,24 @@ export class PgCache {
     if (this.cleanupInterval.unref) {
       this.cleanupInterval.unref();
     }
+  }
+
+  /**
+   * Validate and compute expiration date from TTL
+   * @private
+   */
+  private computeExpiresAt(ttl: number | undefined): Date | null {
+    if (ttl === undefined || ttl === null) {
+      return null;
+    }
+
+    if (!Number.isFinite(ttl) || ttl <= 0) {
+      throw new PgCacheConfigError(
+        `TTL must be a positive finite number, got: ${ttl}`
+      );
+    }
+
+    return new Date(Date.now() + ttl * 1000);
   }
 
   /**
