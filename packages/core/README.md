@@ -69,6 +69,52 @@ Set a value in the cache.
 await cache.set("user:1", { name: "Lekan" }, { ttl: 60 });
 ```
 
+#### `setNX(key, value, options?)`
+
+Set a value only if the key does not already exist (SET if Not Exists).
+
+Returns `true` if the key was set, `false` if it already exists.
+
+This is useful for distributed locks and preventing race conditions.
+
+**Example - Distributed Lock:**
+
+```typescript
+const acquired = await cache.setNX(
+  "lock:user:1",
+  "processing",
+  { ttl: 30 }
+);
+
+if (acquired) {
+  console.log("Lock acquired!");
+  // Do work...
+  await cache.del("lock:user:1");
+} else {
+  console.log("Lock already held");
+}
+```
+
+**Example - Prevent Duplicate Processing:**
+
+```typescript
+const key = `job:${jobId}`;
+const started = await cache.setNX(key, "running", { ttl: 300 });
+
+if (!started) {
+  console.log("Job already running");
+  return;
+}
+
+// Process job...
+```
+
+**Return Value:**
+- `true` - Key was successfully set
+- `false` - Key already exists
+
+**Note:** Expired keys are treated as non-existent, so setNX will succeed if the key exists but is expired.
+
 #### `get<T>(key)`
 
 Get a value from the cache.

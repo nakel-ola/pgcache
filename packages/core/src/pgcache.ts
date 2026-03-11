@@ -183,6 +183,80 @@ export class PgCache {
   }
 
   /**
+   * Set a value only if the key does not exist (SET if Not Exists)
+   *
+   * @param key - The cache key
+   * @param value - The value to cache (will be JSON serialized)
+   * @param options - Options including TTL
+   * @returns True if the key was set, false if it already exists
+   *
+   * @example Distributed lock
+   * ```typescript
+   * const acquired = await cache.setNX("lock:user:1", "processing", { ttl: 30 });
+   * if (acquired) {
+   *   // Lock acquired, do work...
+   *   await cache.del("lock:user:1");
+   * }
+   * ```
+   *
+   * @example Prevent duplicate processing
+   * ```typescript
+   * const key = `job:${jobId}`;
+   * const started = await cache.setNX(key, "running", { ttl: 300 });
+   * if (!started) {
+   *   console.log("Job already running");
+   *   return;
+   * }
+   * // Process job...
+   * ```
+   */
+  async setNX<T = unknown>(
+    key: string,
+    value: T,
+    options?: PgCacheSetOptions
+  ): Promise<boolean> {
+    await this.ensureInitialized();
+
+    const expiresAt = options?.ttl
+      ? new Date(Date.now() + options.ttl * 1000)
+      : null;
+
+    // Handle undefined by wrapping in a container to preserve the distinction from null
+    const wrappedValue = value === undefined
+      ? { __pgcache_undefined: true }
+      : { __pgcache_value: value };
+
+    try {
+      // First, delete any expired keys with this name
+      // This ensures expired keys don't block setNX
+      await this.pool.query(
+        `
+        DELETE FROM ${this.table}
+        WHERE key = $1
+        AND expires_at IS NOT NULL
+        AND expires_at < NOW()
+      `,
+        [key]
+      );
+
+      // Then attempt to insert, but do nothing if key already exists
+      const result = await this.pool.query(
+        `
+        INSERT INTO ${this.table} (key, value, expires_at)
+        VALUES ($1, $2::jsonb, $3)
+        ON CONFLICT (key) DO NOTHING
+      `,
+        [key, JSON.stringify(wrappedValue), expiresAt]
+      );
+
+      // Return true if a row was inserted, false if key already existed
+      return (result.rowCount ?? 0) > 0;
+    } catch (err) {
+      throw new PgCacheQueryError("Failed to set cache entry", undefined, err as Error);
+    }
+  }
+
+  /**
    * Get a value from the cache
    *
    * @param key - The cache key

@@ -129,6 +129,118 @@ describe("PgCache", () => {
     });
   });
 
+  describe("setNX()", () => {
+    it("should set key if not exists and return true", async () => {
+      const result = await cache.setNX("new-key", "value");
+      expect(result).toBe(true);
+
+      const value = await cache.get("new-key");
+      expect(value).toBe("value");
+    });
+
+    it("should not overwrite existing key and return false", async () => {
+      await cache.set("existing-key", "original-value");
+      const result = await cache.setNX("existing-key", "new-value");
+      expect(result).toBe(false);
+
+      const value = await cache.get("existing-key");
+      expect(value).toBe("original-value");
+    });
+
+    it("should return false when key already exists", async () => {
+      await cache.set("test-key", "value1");
+      const result1 = await cache.setNX("test-key", "value2");
+      const result2 = await cache.setNX("test-key", "value3");
+
+      expect(result1).toBe(false);
+      expect(result2).toBe(false);
+
+      const value = await cache.get("test-key");
+      expect(value).toBe("value1");
+    });
+
+    it("should set key when expired key exists", async () => {
+      // Set a key with 1 second TTL
+      await cache.set("expired-key", "old-value", { ttl: 1 });
+
+      // Wait for expiration
+      await new Promise((resolve) => setTimeout(resolve, 1100));
+
+      // setNX should succeed because the key is expired
+      const result = await cache.setNX("expired-key", "new-value");
+      expect(result).toBe(true);
+
+      const value = await cache.get("expired-key");
+      expect(value).toBe("new-value");
+    });
+
+    it("should respect TTL option", async () => {
+      const result = await cache.setNX("ttl-key", "value", { ttl: 2 });
+      expect(result).toBe(true);
+
+      // Key should exist initially
+      let value = await cache.get("ttl-key");
+      expect(value).toBe("value");
+
+      // Wait for expiration
+      await new Promise((resolve) => setTimeout(resolve, 2100));
+
+      // Key should be expired
+      value = await cache.get("ttl-key");
+      expect(value).toBeNull();
+    });
+
+    it("should handle objects and arrays", async () => {
+      const obj = { name: "Test", count: 42 };
+      const arr = [1, 2, 3];
+
+      const result1 = await cache.setNX("object-key", obj);
+      const result2 = await cache.setNX("array-key", arr);
+
+      expect(result1).toBe(true);
+      expect(result2).toBe(true);
+
+      const retrievedObj = await cache.get("object-key");
+      const retrievedArr = await cache.get("array-key");
+
+      expect(retrievedObj).toEqual(obj);
+      expect(retrievedArr).toEqual(arr);
+    });
+
+    it("should handle null and undefined values", async () => {
+      const result1 = await cache.setNX("null-nx-key", null);
+      const result2 = await cache.setNX("undefined-nx-key", undefined);
+
+      expect(result1).toBe(true);
+      expect(result2).toBe(true);
+
+      const nullValue = await cache.get("null-nx-key");
+      const undefinedValue = await cache.get("undefined-nx-key");
+
+      expect(nullValue).toBeNull();
+      expect(undefinedValue).toBeUndefined();
+    });
+
+    it("should work as a distributed lock mechanism", async () => {
+      const lockKey = "lock:resource:1";
+
+      // First process acquires lock
+      const acquired1 = await cache.setNX(lockKey, "process-1", { ttl: 5 });
+      expect(acquired1).toBe(true);
+
+      // Second process tries to acquire same lock
+      const acquired2 = await cache.setNX(lockKey, "process-2", { ttl: 5 });
+      expect(acquired2).toBe(false);
+
+      // First process releases lock
+      await cache.del(lockKey);
+
+      // Second process can now acquire lock
+      const acquired3 = await cache.setNX(lockKey, "process-2", { ttl: 5 });
+      expect(acquired3).toBe(true);
+    });
+  });
+
   describe("TTL (Time To Live)", () => {
     it("should set value with TTL", async () => {
       await cache.set("ttl-key", "value", { ttl: 2 });

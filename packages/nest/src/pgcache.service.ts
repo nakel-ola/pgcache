@@ -46,6 +46,29 @@ export class PgCacheService implements OnModuleDestroy {
   }
 
   /**
+   * Set a value only if the key does not exist (SET if Not Exists)
+   * Useful for distributed locks and preventing race conditions
+   *
+   * @returns true if the key was set, false if it already exists
+   *
+   * @example Distributed lock
+   * ```typescript
+   * const acquired = await this.cache.setNX("lock:user:1", "processing", { ttl: 30 });
+   * if (acquired) {
+   *   // Do work...
+   *   await this.cache.del("lock:user:1");
+   * }
+   * ```
+   */
+  async setNX<T = unknown>(
+    key: string,
+    value: T,
+    options?: PgCacheSetOptions
+  ): Promise<boolean> {
+    return this.pgcache.setNX(key, value, options);
+  }
+
+  /**
    * Get a value from the cache
    */
   async get<T = unknown>(key: string): Promise<T | null> {

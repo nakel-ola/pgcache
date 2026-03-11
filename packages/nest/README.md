@@ -64,6 +64,48 @@ export class UserService {
 }
 ```
 
+### Distributed Lock Example
+
+Use `setNX` for distributed locks to prevent concurrent processing:
+
+```typescript
+import { Injectable } from "@nestjs/common";
+import { PgCacheService } from "@pgcache/nest";
+
+@Injectable()
+export class TaskService {
+  constructor(private readonly cache: PgCacheService) {}
+
+  async processTask(taskId: string) {
+    const lockKey = `lock:task:${taskId}`;
+
+    // Try to acquire lock with 30 second TTL
+    const acquired = await this.cache.setNX(
+      lockKey,
+      "processing",
+      { ttl: 30 }
+    );
+
+    if (!acquired) {
+      console.log("Task already being processed");
+      return;
+    }
+
+    try {
+      // Do work...
+      await this.doWork(taskId);
+    } finally {
+      // Release lock
+      await this.cache.del(lockKey);
+    }
+  }
+
+  private async doWork(taskId: string) {
+    // Your task processing logic
+  }
+}
+```
+
 ## Advanced Configuration
 
 ### Async Configuration with ConfigService
@@ -118,6 +160,7 @@ The `PgCacheService` provides the same methods as `PgCache` from `@pgcache/core`
 ### Methods
 
 - `set<T>(key, value, options?)` - Set a value with optional TTL
+- `setNX<T>(key, value, options?)` - Set a value only if key doesn't exist (returns boolean)
 - `get<T>(key)` - Get a value
 - `del(key)` - Delete a key
 - `exists(key)` - Check if key exists
