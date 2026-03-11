@@ -2,10 +2,13 @@
 
 A complete NestJS application demonstrating how to use `@pgcache/nest` for caching in a production-ready way.
 
-## Features
+## Examples Included
 
-This example showcases:
+### 1. Main Application (`src/`)
 
+A working NestJS application with caching integration.
+
+Features:
 - NestJS module integration with `PgCacheModule`
 - Dependency injection with `PgCacheService`
 - Real-world caching patterns
@@ -14,17 +17,32 @@ This example showcases:
 - Cache hit/miss logging
 - Health checks with cache statistics
 
+### 2. Custom Pool Example (`src/custom-pool.example.ts`)
+
+Comprehensive examples showing how to use a custom PostgreSQL connection pool with PgCacheModule.
+
+Demonstrates:
+- **Basic custom pool provider** - Creating and configuring a custom pool
+- **Multiple cache instances** - Sharing a pool across multiple cache tables
+- **Pool monitoring service** - Health monitoring and statistics
+- **ConfigService integration** - Dynamic pool configuration based on environment
+- **Dependency injection** - Injecting the pool for direct access
+- **Lifecycle management** - Proper pool cleanup on app shutdown
+
+**Note**: This is a reference file with multiple examples. See the code comments for detailed usage instructions.
+
 ## Architecture
 
 ```
 src/
-├── main.ts                 # Application entry point
-├── app.module.ts           # Root module with PgCacheModule
-├── app.controller.ts       # Health and utility endpoints
-└── users/                  # Example feature module
-    ├── users.module.ts     # Users module
-    ├── users.controller.ts # Users REST endpoints
-    └── users.service.ts    # Business logic with caching
+├── main.ts                    # Application entry point
+├── app.module.ts              # Root module with PgCacheModule
+├── app.controller.ts          # Health and utility endpoints
+├── custom-pool.example.ts     # Custom pool examples (reference)
+└── users/                     # Example feature module
+    ├── users.module.ts        # Users module
+    ├── users.controller.ts    # Users REST endpoints
+    └── users.service.ts       # Business logic with caching
 ```
 
 ## Setup

@@ -64,6 +64,8 @@ pnpm add @pgcache/nest
 
 ### Basic Usage (Node.js)
 
+**Option 1: Using Connection String**
+
 ```typescript
 import { PgCache } from "@pgcache/core";
 
@@ -84,6 +86,30 @@ const exists = await cache.exists("user:1");
 // Delete
 await cache.del("user:1");
 ```
+
+**Option 2: Using Custom Pool**
+
+```typescript
+import { Pool } from "pg";
+import { PgCache } from "@pgcache/core";
+
+// Create your own pool with custom configuration
+const pool = new Pool({
+  connectionString: process.env.DATABASE_URL,
+  max: 20,                      // Max connections
+  idleTimeoutMillis: 30000,     // Close idle clients
+  connectionTimeoutMillis: 2000, // Connection timeout
+});
+
+// Use the custom pool
+const cache = new PgCache({ pool });
+
+// You can share the pool across multiple cache instances
+const userCache = new PgCache({ pool, table: "user_cache" });
+const sessionCache = new PgCache({ pool, table: "session_cache" });
+```
+
+See [@pgcache/core documentation](./packages/core/README.md#using-custom-pool) for advanced pool configuration.
 
 ### NestJS Integration
 

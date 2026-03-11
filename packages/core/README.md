@@ -180,12 +180,176 @@ ON pgcache(expires_at)
 WHERE expires_at IS NOT NULL;
 ```
 
+## Using Custom Pool
+
+### When to Use a Custom Pool
+
+Use a custom pool when you need to:
+- **Share a connection pool** across multiple parts of your application
+- **Configure advanced pool options** (connection limits, timeouts, SSL, etc.)
+- **Monitor pool health** and connection metrics
+- **Reuse an existing pool** from your application
+
+### Basic Custom Pool
+
+```typescript
+import { Pool } from "pg";
+import { PgCache } from "@pgcache/core";
+
+// Create your own pool with custom configuration
+const pool = new Pool({
+  connectionString: process.env.DATABASE_URL,
+  max: 20,                      // Maximum pool size
+  idleTimeoutMillis: 30000,     // Close idle clients after 30 seconds
+  connectionTimeoutMillis: 2000, // Return an error after 2 seconds if connection not established
+});
+
+// Use the custom pool
+const cache = new PgCache({ pool });
+
+// pgcache won't close your pool when cache.close() is called
+await cache.close(); // Only stops cleanup, doesn't end the pool
+
+// You manage the pool lifecycle
+await pool.end();
+```
+
+### Sharing Pools Across Instances
+
+You can share a single pool across multiple PgCache instances:
+
+```typescript
+const pool = new Pool({
+  connectionString: process.env.DATABASE_URL,
+  max: 50, // Higher limit for multiple cache instances
+});
+
+// Multiple cache instances using different tables
+const userCache = new PgCache({
+  pool,
+  table: "user_cache",
+  cleanupInterval: 60000,
+});
+
+const sessionCache = new PgCache({
+  pool,
+  table: "session_cache",
+  cleanupInterval: 30000,
+});
+
+const productCache = new PgCache({
+  pool,
+  table: "product_cache",
+  cleanupInterval: 120000,
+});
+
+// All instances share the same connection pool
+```
+
+### Advanced Pool Configuration
+
+```typescript
+import { Pool } from "pg";
+import { PgCache } from "@pgcache/core";
+
+const pool = new Pool({
+  connectionString: process.env.DATABASE_URL,
+
+  // Connection pool settings
+  max: 20,                      // Max number of clients in pool
+  min: 5,                       // Min number of clients
+  idleTimeoutMillis: 30000,     // Close idle clients after 30s
+  connectionTimeoutMillis: 2000, // Fail after 2s if connection can't be established
+
+  // Statement timeout (queries will be cancelled after this time)
+  statement_timeout: 5000,
+
+  // SSL configuration
+  ssl: {
+    rejectUnauthorized: false,
+  },
+
+  // Application name for monitoring
+  application_name: "pgcache_app",
+});
+
+// Pool error handling
+pool.on("error", (err, client) => {
+  console.error("Unexpected pool error:", err);
+});
+
+pool.on("connect", (client) => {
+  console.log("New client connected to pool");
+});
+
+pool.on("remove", (client) => {
+  console.log("Client removed from pool");
+});
+
+const cache = new PgCache({ pool });
+```
+
+### Pool Monitoring
+
+```typescript
+import { Pool } from "pg";
+import { PgCache } from "@pgcache/core";
+
+const pool = new Pool({
+  connectionString: process.env.DATABASE_URL,
+  max: 20,
+});
+
+const cache = new PgCache({ pool });
+
+// Monitor pool health
+function logPoolStats() {
+  console.log("Pool Stats:", {
+    totalCount: pool.totalCount,     // Total number of clients
+    idleCount: pool.idleCount,       // Idle clients
+    waitingCount: pool.waitingCount, // Clients waiting for connection
+  });
+}
+
+setInterval(logPoolStats, 10000); // Log every 10 seconds
+
+// Graceful shutdown
+process.on("SIGTERM", async () => {
+  await cache.close(); // Stop cleanup
+  await pool.end();    // Close all connections
+  process.exit(0);
+});
+```
+
+### TypeScript Pool Types
+
+```typescript
+import { Pool, PoolConfig } from "pg";
+import { PgCache } from "@pgcache/core";
+
+const poolConfig: PoolConfig = {
+  connectionString: process.env.DATABASE_URL,
+  max: 20,
+  idleTimeoutMillis: 30000,
+};
+
+const pool = new Pool(poolConfig);
+const cache = new PgCache({ pool });
+
+// Type-safe pool access
+pool.query("SELECT version()").then((result) => {
+  console.log("PostgreSQL version:", result.rows[0]);
+});
+```
+
 ## Performance Tips
 
 - UNLOGGED tables provide better performance but data may be lost on crashes
 - Use batch operations (mget/mset) for multiple operations
 - Adjust `cleanupInterval` based on your expiration patterns
 - Use connection pooling for high-concurrency scenarios
+- **Configure pool size** based on your concurrent query load
+- **Monitor pool metrics** to optimize connection settings
 
 ## License
 

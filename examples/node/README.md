@@ -2,10 +2,13 @@
 
 A simple Express.js REST API demonstrating how to use `@pgcache/core` in a Node.js application.
 
-## Features
+## Examples Included
 
-This example showcases:
+### 1. REST API Server (`src/index.ts`)
 
+A complete Express.js server with endpoints for all cache operations.
+
+Features:
 - Basic cache operations (set, get, delete, exists)
 - TTL (Time To Live) support
 - Pattern-based key search
@@ -13,6 +16,23 @@ This example showcases:
 - Cache statistics
 - Manual cleanup
 - Graceful shutdown
+
+### 2. Custom Pool Example (`src/custom-pool.ts`)
+
+Demonstrates how to use a custom PostgreSQL connection pool with PgCache.
+
+Features:
+- Creating a custom pool with advanced configuration
+- Sharing a pool across multiple cache instances
+- Pool health monitoring and statistics
+- Event handlers for pool lifecycle
+- Graceful shutdown handling
+- Direct pool access for custom queries
+
+**Run it:**
+```bash
+pnpm custom-pool
+```
 
 ## Setup
 

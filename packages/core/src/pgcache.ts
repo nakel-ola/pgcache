@@ -14,7 +14,7 @@ import {
 /**
  * Redis-like cache client using PostgreSQL UNLOGGED tables
  *
- * @example
+ * @example Basic usage with connection string
  * ```typescript
  * const cache = new PgCache({
  *   connectionString: process.env.DATABASE_URL
@@ -22,6 +22,44 @@ import {
  *
  * await cache.set("user:1", { name: "Lekan" }, { ttl: 60 });
  * const user = await cache.get("user:1");
+ * ```
+ *
+ * @example Using a custom pool
+ * ```typescript
+ * import { Pool } from "pg";
+ *
+ * const pool = new Pool({
+ *   connectionString: process.env.DATABASE_URL,
+ *   max: 20,
+ *   idleTimeoutMillis: 30000,
+ * });
+ *
+ * const cache = new PgCache({ pool });
+ *
+ * // You manage the pool lifecycle
+ * await cache.close(); // Only stops cleanup
+ * await pool.end();    // Closes all connections
+ * ```
+ *
+ * @example Sharing a pool across multiple caches
+ * ```typescript
+ * const pool = new Pool({ ... });
+ *
+ * const userCache = new PgCache({ pool, table: "user_cache" });
+ * const sessionCache = new PgCache({ pool, table: "session_cache" });
+ * ```
+ *
+ * @example Advanced configuration
+ * ```typescript
+ * const cache = new PgCache({
+ *   connectionString: process.env.DATABASE_URL,
+ *   table: "my_cache",
+ *   cleanupInterval: 30000,  // Cleanup every 30 seconds
+ *   poolConfig: {
+ *     max: 10,
+ *     idleTimeoutMillis: 20000,
+ *   },
+ * });
  * ```
  */
 export class PgCache {
