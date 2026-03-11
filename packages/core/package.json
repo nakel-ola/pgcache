@@ -1,8 +1,14 @@
 {
   "name": "@pgcache/core",
-  "version": "0.0.1",
+  "version": "0.1.0",
   "description": "Redis-like cache client using PostgreSQL UNLOGGED tables",
-  "keywords": ["cache", "postgresql", "postgres", "redis", "caching"],
+  "keywords": [
+    "cache",
+    "postgresql",
+    "postgres",
+    "redis",
+    "caching"
+  ],
   "license": "MIT",
   "type": "module",
   "exports": {
@@ -20,7 +26,9 @@
   "main": "./dist/index.cjs",
   "module": "./dist/index.js",
   "types": "./dist/index.d.ts",
-  "files": ["dist"],
+  "files": [
+    "dist"
+  ],
   "scripts": {
     "build": "tsup",
     "dev": "tsup --watch",
