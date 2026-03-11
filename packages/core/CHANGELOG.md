@@ -1,4 +1,4 @@
-# @pgcache/nest
+# @pgcache/core
 
 ## 0.1.0
 
@@ -29,16 +29,3 @@
   This prevents accidentally deleting a lock that was acquired by another process after your lock expired.
 
 - dc633b8: Add setNX method for atomic set-if-not-exists operations. This Redis-style command is useful for distributed locks and preventing race conditions. Returns true if the key was set, false if it already exists. Expired keys are treated as non-existent.
-
-### Patch Changes
-
-- Updated dependencies [9c03fd4]
-- Updated dependencies [dc633b8]
-  - @pgcache/core@0.1.0
-
-## 0.0.2
-
-### Patch Changes
-
-- a9ba9a9: Make PgCacheModule global when using forRoot() or forRootAsync(). This allows feature modules to inject PgCacheService without needing to import PgCacheModule in every module, following NestJS conventions for root-level modules.
-- a9ba9a9: Support NestJS v11 in peer dependencies. The package now works with both NestJS v10 and v11.

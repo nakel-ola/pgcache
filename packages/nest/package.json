@@ -1,6 +1,6 @@
 {
   "name": "@pgcache/nest",
-  "version": "0.0.2",
+  "version": "0.1.0",
   "description": "NestJS integration for pgcache",
   "keywords": [
     "cache",
