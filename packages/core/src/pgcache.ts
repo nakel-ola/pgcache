@@ -66,6 +66,7 @@ export class PgCache {
   private pool: Pool;
   private ownPool: boolean;
   private table: string;
+  private quotedTable: string;
   private cleanupInterval?: NodeJS.Timeout;
   private isInitialized = false;
 
@@ -89,7 +90,9 @@ export class PgCache {
       this.ownPool = true;
     }
 
-    this.table = options.table ?? "pgcache";
+    const tableName = options.table ?? "pgcache";
+    this.table = tableName;
+    this.quotedTable = this.validateAndQuoteTableName(tableName);
 
     // Auto-initialize if enabled (default: true)
     const autoInit = options.autoInit ?? true;
@@ -116,7 +119,7 @@ export class PgCache {
 
     try {
       await this.pool.query(`
-        CREATE UNLOGGED TABLE IF NOT EXISTS ${this.table} (
+        CREATE UNLOGGED TABLE IF NOT EXISTS ${this.quotedTable} (
           key TEXT PRIMARY KEY,
           value JSONB NOT NULL,
           expires_at TIMESTAMP NULL,
@@ -125,8 +128,8 @@ export class PgCache {
       `);
 
       await this.pool.query(`
-        CREATE INDEX IF NOT EXISTS ${this.table}_expires_idx
-        ON ${this.table}(expires_at)
+        CREATE INDEX IF NOT EXISTS "${this.table}_expires_idx"
+        ON ${this.quotedTable}(expires_at)
         WHERE expires_at IS NOT NULL
       `);
 
@@ -168,7 +171,7 @@ export class PgCache {
     try {
       await this.pool.query(
         `
-        INSERT INTO ${this.table} (key, value, expires_at)
+        INSERT INTO ${this.quotedTable} (key, value, expires_at)
         VALUES ($1, $2::jsonb, $3)
         ON CONFLICT (key)
         DO UPDATE SET value = $2::jsonb, expires_at = $3, created_at = NOW()
@@ -243,10 +246,10 @@ export class PgCache {
       // This ensures expired keys don't block setNX
       await this.pool.query(
         `
-        DELETE FROM ${this.table}
+        DELETE FROM ${this.quotedTable}
         WHERE key = $1
         AND expires_at IS NOT NULL
-        AND expires_at < NOW()
+        AND expires_at <= NOW()
       `,
         [key]
       );
@@ -254,7 +257,7 @@ export class PgCache {
       // Then attempt to insert, but do nothing if key already exists
       const result = await this.pool.query(
         `
-        INSERT INTO ${this.table} (key, value, expires_at)
+        INSERT INTO ${this.quotedTable} (key, value, expires_at)
         VALUES ($1, $2::jsonb, $3)
         ON CONFLICT (key) DO NOTHING
       `,
@@ -285,7 +288,7 @@ export class PgCache {
     try {
       const result = await this.pool.query<{ value: T }>(
         `
-        SELECT value FROM ${this.table}
+        SELECT value FROM ${this.quotedTable}
         WHERE key = $1
         AND (expires_at IS NULL OR expires_at > NOW())
       `,
@@ -330,7 +333,7 @@ export class PgCache {
 
     try {
       const result = await this.pool.query(
-        `DELETE FROM ${this.table} WHERE key = $1`,
+        `DELETE FROM ${this.quotedTable} WHERE key = $1`,
         [key]
       );
 
@@ -381,7 +384,7 @@ export class PgCache {
     try {
       const result = await this.pool.query(
         `
-        DELETE FROM ${this.table}
+        DELETE FROM ${this.quotedTable}
         WHERE key = $1
         AND value = $2::jsonb
       `,
@@ -412,7 +415,7 @@ export class PgCache {
       const result = await this.pool.query<{ exists: boolean }>(
         `
         SELECT EXISTS(
-          SELECT 1 FROM ${this.table}
+          SELECT 1 FROM ${this.quotedTable}
           WHERE key = $1
           AND (expires_at IS NULL OR expires_at > NOW())
         ) as exists
@@ -443,7 +446,7 @@ export class PgCache {
     try {
       const result = await this.pool.query<{ expires_at: Date | null }>(
         `
-        SELECT expires_at FROM ${this.table}
+        SELECT expires_at FROM ${this.quotedTable}
         WHERE key = $1
       `,
         [key]
@@ -484,7 +487,7 @@ export class PgCache {
     await this.ensureInitialized();
 
     try {
-      await this.pool.query(`TRUNCATE TABLE ${this.table}`);
+      await this.pool.query(`TRUNCATE TABLE ${this.quotedTable}`);
     } catch (err) {
       throw new PgCacheQueryError("Failed to clear cache", undefined, err as Error);
     }
@@ -510,7 +513,7 @@ export class PgCache {
     try {
       const result = await this.pool.query<{ key: string }>(
         `
-        SELECT key FROM ${this.table}
+        SELECT key FROM ${this.quotedTable}
         WHERE key ${operator} $1
         AND (expires_at IS NULL OR expires_at > NOW())
       `,
@@ -544,7 +547,7 @@ export class PgCache {
     try {
       const result = await this.pool.query<{ key: string; value: T }>(
         `
-        SELECT key, value FROM ${this.table}
+        SELECT key, value FROM ${this.quotedTable}
         WHERE key = ANY($1)
         AND (expires_at IS NULL OR expires_at > NOW())
       `,
@@ -613,7 +616,7 @@ export class PgCache {
 
         await client.query(
           `
-          INSERT INTO ${this.table} (key, value, expires_at)
+          INSERT INTO ${this.quotedTable} (key, value, expires_at)
           VALUES ($1, $2::jsonb, $3)
           ON CONFLICT (key)
           DO UPDATE SET value = $2::jsonb, expires_at = $3, created_at = NOW()
@@ -652,7 +655,7 @@ export class PgCache {
     try {
       const result = await this.pool.query(
         `
-        DELETE FROM ${this.table}
+        DELETE FROM ${this.quotedTable}
         WHERE expires_at IS NOT NULL
         AND expires_at <= NOW()
       `
@@ -690,7 +693,7 @@ export class PgCache {
           COUNT(*) FILTER (WHERE expires_at IS NOT NULL AND expires_at <= NOW()) as expired,
           COUNT(*) FILTER (WHERE expires_at IS NULL OR expires_at > NOW()) as active,
           pg_total_relation_size('${this.table}') as size
-        FROM ${this.table}
+        FROM ${this.quotedTable}
       `);
 
       const row = result.rows[0]!;
@@ -764,5 +767,23 @@ export class PgCache {
     if (!this.isInitialized) {
       await this.init();
     }
+  }
+
+  /**
+   * Validate and quote table name to prevent SQL injection
+   * @private
+   */
+  private validateAndQuoteTableName(tableName: string): string {
+    // Validate: only alphanumeric and underscores, must start with letter or underscore
+    const validIdentifierPattern = /^[a-zA-Z_][a-zA-Z0-9_]*$/;
+
+    if (!validIdentifierPattern.test(tableName)) {
+      throw new PgCacheConfigError(
+        `Invalid table name: "${tableName}". Table names must start with a letter or underscore and contain only letters, numbers, and underscores.`
+      );
+    }
+
+    // Quote the identifier for safe use in SQL (escape any double quotes by doubling them)
+    return `"${tableName.replace(/"/g, '""')}"`;
   }
 }

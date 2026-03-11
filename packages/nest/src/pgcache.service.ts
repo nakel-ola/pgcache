@@ -51,12 +51,20 @@ export class PgCacheService implements OnModuleDestroy {
    *
    * @returns true if the key was set, false if it already exists
    *
-   * @example Distributed lock
+   * @example Safe distributed lock
    * ```typescript
-   * const acquired = await this.cache.setNX("lock:user:1", "processing", { ttl: 30 });
+   * import { randomUUID } from "crypto";
+   *
+   * const lockKey = "lock:user:1";
+   * const lockToken = randomUUID();
+   *
+   * const acquired = await this.cache.setNX(lockKey, lockToken, { ttl: 30 });
    * if (acquired) {
-   *   // Do work...
-   *   await this.cache.del("lock:user:1");
+   *   try {
+   *     // Do work...
+   *   } finally {
+   *     await this.cache.delIfEquals(lockKey, lockToken);
+   *   }
    * }
    * ```
    */
