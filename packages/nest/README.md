@@ -1,6 +1,15 @@
 # @pgcache/nest
 
-NestJS integration for pgcache - A Redis-like cache using PostgreSQL.
+`@pgcache/nest` is a **NestJS cache module for PostgreSQL**. It wraps pgcache in Nest dependency injection so you can use a Redis-like cache API, TTL support, and PostgreSQL-backed caching inside NestJS services and modules.
+
+## Why Search for @pgcache/nest?
+
+Use this package if you need:
+
+- A **NestJS cache** backed by PostgreSQL
+- A **Redis alternative for NestJS**
+- A **TTL cache module** that fits existing Nest dependency injection
+- A **Postgres-first caching strategy** without extra cache infrastructure
 
 ## Features
 

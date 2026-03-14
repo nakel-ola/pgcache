@@ -4,7 +4,7 @@
 
 ### Initial Release
 
-This is the initial release of pgcache - a Redis-like cache client using PostgreSQL UNLOGGED tables.
+This is the initial release of pgcache, a PostgreSQL cache for Node.js and NestJS with a Redis-like API built on UNLOGGED tables.
 
 #### Packages
 

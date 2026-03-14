@@ -1,9 +1,18 @@
 # pgcache
 
-[![CI](https://github.com/yourusername/pgcache/actions/workflows/ci.yml/badge.svg)](https://github.com/yourusername/pgcache/actions/workflows/ci.yml)
+[![CI](https://github.com/nakel-ola/pgcache/actions/workflows/ci.yml/badge.svg)](https://github.com/nakel-ola/pgcache/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-A **Redis-like cache client** implemented using PostgreSQL UNLOGGED tables. Get the performance benefits of in-database caching with a familiar Redis-style API.
+A **PostgreSQL cache for Node.js and NestJS** that gives you a Redis-like API on top of PostgreSQL UNLOGGED tables. Use pgcache when you want TTL-based caching, JSONB value storage, and fewer moving parts than running Redis alongside Postgres.
+
+## PostgreSQL Cache Packages
+
+`pgcache` is built for teams searching for:
+
+- A **Redis alternative for PostgreSQL-first stacks**
+- A **Node.js cache backed by Postgres**
+- A **NestJS cache module with TTL support**
+- A **database cache with JSONB storage and familiar cache commands**
 
 ## Features
 
@@ -46,9 +55,9 @@ A **Redis-like cache client** implemented using PostgreSQL UNLOGGED tables. Get 
 
 This monorepo contains:
 
-- **[@pgcache/core](./packages/core)** - Core cache client
-- **[@pgcache/nest](./packages/nest)** - NestJS integration
-- **[@pgcache/types](./packages/types)** - Shared TypeScript types
+- **[@pgcache/core](./packages/core)** - PostgreSQL cache client for Node.js
+- **[@pgcache/nest](./packages/nest)** - NestJS cache module for PostgreSQL-backed apps
+- **[@pgcache/types](./packages/types)** - Shared TypeScript types for the pgcache ecosystem
 
 ## Quick Start
 
@@ -237,7 +246,7 @@ pnpm dev
 
 ```bash
 # Clone the repository
-git clone https://github.com/yourusername/pgcache.git
+git clone https://github.com/nakel-ola/pgcache.git
 cd pgcache
 
 # Install dependencies
@@ -361,7 +370,7 @@ MIT © [pgcache contributors](./LICENSE)
 
 - **Documentation**: [Package READMEs](./packages)
 - **Examples**: [examples/](./examples)
-- **Issues**: [GitHub Issues](https://github.com/yourusername/pgcache/issues)
+- **Issues**: [GitHub Issues](https://github.com/nakel-ola/pgcache/issues)
 
 ---
 

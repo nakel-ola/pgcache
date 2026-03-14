@@ -82,7 +82,7 @@ Classic tokens are simpler but less secure:
 ### Step 2: Add Token to GitHub
 
 1. **Go to Repository Settings**
-   - Navigate to: https://github.com/YOUR_ORG/pgcache
+   - Navigate to: https://github.com/nakel-ola/pgcache
    - Click **Settings** tab
 
 2. **Add Secret**

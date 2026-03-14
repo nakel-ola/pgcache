@@ -2,18 +2,28 @@
   "name": "pgcache",
   "version": "0.0.0",
   "private": true,
-  "description": "Redis-like cache client using PostgreSQL UNLOGGED tables",
+  "description": "PostgreSQL cache packages for Node.js and NestJS with a Redis-like API, TTL support, and UNLOGGED tables",
   "keywords": [
-    "cache",
+    "pgcache",
+    "postgresql-cache",
+    "postgres-cache",
     "postgresql",
     "postgres",
-    "redis",
+    "redis-alternative",
+    "redis-like",
+    "node-cache",
+    "nestjs-cache",
     "caching",
-    "unlogged"
+    "ttl",
+    "unlogged-tables"
   ],
   "repository": {
     "type": "git",
-    "url": "https://github.com/yourusername/pgcache.git"
+    "url": "git+https://github.com/nakel-ola/pgcache.git"
+  },
+  "homepage": "https://github.com/nakel-ola/pgcache#readme",
+  "bugs": {
+    "url": "https://github.com/nakel-ola/pgcache/issues"
   },
   "license": "MIT",
   "author": "",

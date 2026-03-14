@@ -1,15 +1,31 @@
 {
   "name": "@pgcache/nest",
   "version": "0.1.0",
-  "description": "NestJS integration for pgcache",
+  "description": "NestJS cache module for PostgreSQL with a Redis-like API, TTL support, and dependency injection",
   "keywords": [
-    "cache",
+    "pgcache",
+    "postgresql-cache",
+    "postgres-cache",
     "postgresql",
     "nestjs",
-    "nest"
+    "nest",
+    "nestjs-cache",
+    "cache-module",
+    "redis-alternative",
+    "ttl",
+    "dependency-injection"
   ],
   "license": "MIT",
   "type": "module",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/nakel-ola/pgcache.git",
+    "directory": "packages/nest"
+  },
+  "homepage": "https://github.com/nakel-ola/pgcache/tree/main/packages/nest#readme",
+  "bugs": {
+    "url": "https://github.com/nakel-ola/pgcache/issues"
+  },
   "exports": {
     ".": {
       "import": {

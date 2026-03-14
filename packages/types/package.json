@@ -1,10 +1,28 @@
 {
   "name": "@pgcache/types",
   "version": "0.0.1",
-  "description": "Shared TypeScript types for pgcache",
-  "keywords": ["cache", "postgresql", "types", "typescript"],
+  "description": "Shared TypeScript types for pgcache packages, including PostgreSQL cache options and cache entry contracts",
+  "keywords": [
+    "pgcache",
+    "postgresql-cache",
+    "postgres-cache",
+    "typescript",
+    "types",
+    "cache-types",
+    "nestjs-types",
+    "node-types"
+  ],
   "license": "MIT",
   "type": "module",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/nakel-ola/pgcache.git",
+    "directory": "packages/types"
+  },
+  "homepage": "https://github.com/nakel-ola/pgcache/tree/main/packages/types#readme",
+  "bugs": {
+    "url": "https://github.com/nakel-ola/pgcache/issues"
+  },
   "exports": {
     ".": {
       "import": {
