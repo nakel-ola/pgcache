@@ -1,6 +1,15 @@
 # @pgcache/core
 
-Redis-like cache client using PostgreSQL UNLOGGED tables for high-performance caching.
+`@pgcache/core` is a **PostgreSQL cache for Node.js** with a Redis-like API. It lets you use PostgreSQL UNLOGGED tables as a Redis alternative for TTL-based caching, JSONB value storage, batch operations, and lightweight distributed locking.
+
+## Why Search for @pgcache/core?
+
+Use this package if you need:
+
+- A **Postgres cache** instead of running Redis
+- A **Node.js cache with TTL support**
+- A **Redis-like API** backed by PostgreSQL
+- A **JSONB cache layer** for app data, sessions, or computed results
 
 ## Features
 

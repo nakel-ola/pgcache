@@ -20,7 +20,7 @@ Please be respectful and constructive in all interactions. We're building a welc
 1. **Fork and clone the repository**
 
 ```bash
-git clone https://github.com/yourusername/pgcache.git
+git clone https://github.com/nakel-ola/pgcache.git
 cd pgcache
 ```
 

@@ -1,6 +1,6 @@
 # @pgcache/types
 
-Shared TypeScript types and interfaces for the pgcache ecosystem.
+`@pgcache/types` provides the shared **TypeScript types for pgcache**, including PostgreSQL cache configuration, cache entry contracts, TTL options, and cache statistics interfaces.
 
 ## Installation
 

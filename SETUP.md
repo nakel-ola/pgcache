@@ -194,12 +194,12 @@ pnpm install
 
 3. **Start Contributing**
    - Read [CONTRIBUTING.md](./CONTRIBUTING.md)
-   - Check [open issues](https://github.com/yourusername/pgcache/issues)
+   - Check [open issues](https://github.com/nakel-ola/pgcache/issues)
 
 ## Getting Help
 
 - **Documentation**: Check package READMEs
-- **Issues**: [GitHub Issues](https://github.com/yourusername/pgcache/issues)
-- **Discussions**: [GitHub Discussions](https://github.com/yourusername/pgcache/discussions)
+- **Issues**: [GitHub Issues](https://github.com/nakel-ola/pgcache/issues)
+- **Discussions**: [GitHub Discussions](https://github.com/nakel-ola/pgcache/discussions)
 
 Happy coding! 🚀

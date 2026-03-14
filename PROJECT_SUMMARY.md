@@ -4,7 +4,7 @@ This document provides a complete overview of the pgcache monorepo structure and
 
 ## 📦 What Was Built
 
-A production-ready, open-source monorepo providing a **Redis-like cache client using PostgreSQL UNLOGGED tables**.
+A production-ready, open-source monorepo providing a **PostgreSQL cache for Node.js and NestJS** with a Redis-like API built on PostgreSQL UNLOGGED tables.
 
 ## 🎯 Packages Created
 
